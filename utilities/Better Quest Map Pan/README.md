@@ -60,12 +60,3 @@ directly:
 powershell.exe -ExecutionPolicy Bypass -File .\scripts\Install-QuestMapPan.ps1 -EdgePixels 48
 ```
 
-## Build A Release Zip
-
-Run:
-
-```text
-Create Release Zip.bat
-```
-
-The ZIP is written to `dist\`.

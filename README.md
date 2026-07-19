@@ -57,13 +57,3 @@ library folders on other drives.
 - `majesty-gold-hd-better-quest-map-pan`
 - `majesty-gold-hd-remember-active-mods`
 
-## Build A Release Zip
-
-Run:
-
-```text
-Create Release Zip.bat
-```
-
-The ZIP is written to `dist\`.
-

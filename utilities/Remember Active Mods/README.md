@@ -60,12 +60,3 @@ path:
 powershell.exe -ExecutionPolicy Bypass -File .\scripts\Install-ModPersistence.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Majesty HD"
 ```
 
-## Build A Release Zip
-
-Run:
-
-```text
-Create Release Zip.bat
-```
-
-The ZIP is written to `dist\`.

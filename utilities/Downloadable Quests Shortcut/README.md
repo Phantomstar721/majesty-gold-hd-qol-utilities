@@ -47,12 +47,3 @@ powershell.exe -ExecutionPolicy Bypass -File .\scripts\Install-DownloadableQuest
 Tested with the Steam release of Majesty Gold HD at `1680x1050`. The installer also
 patches the other modern UI layouts that contain the same quest selection menu.
 
-## Build A Release Zip
-
-Run:
-
-```text
-Create Release Zip.bat
-```
-
-The ZIP is written to `dist\`.
