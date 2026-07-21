@@ -13,6 +13,8 @@ Steam version of **Majesty Gold HD**.
   left-click drag panning.
 - **Remember Active Mods**: saves the in-game **Mods > Active** list and restores it
   automatically on future launches.
+- **Remember Game Speed**: saves the in-quest game-speed slider and restores it for
+  saved games, new quests, and future Majesty launches.
 
 ## Install Everything
 
@@ -50,10 +52,14 @@ need local setup.
 The game-folder patchers try to find the Steam install automatically, including Steam
 library folders on other drives.
 
+Remember Game Speed writes `MajestySessionSpeed.bin` in the Majesty install folder
+after you change the in-quest speed slider once. The file is harmless and is left
+behind by the uninstallers so reinstalling the patch keeps your last speed.
+
 ## Included Repos
 
 - `majesty-gold-hd-skip-intro-videos`
 - `majesty-gold-hd-downloadable-quests-shortcut`
 - `majesty-gold-hd-better-quest-map-pan`
 - `majesty-gold-hd-remember-active-mods`
-
+- `majesty-remember-game-speed`
