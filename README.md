@@ -62,4 +62,4 @@ behind by the uninstallers so reinstalling the patch keeps your last speed.
 - `majesty-gold-hd-downloadable-quests-shortcut`
 - `majesty-gold-hd-better-quest-map-pan`
 - `majesty-gold-hd-remember-active-mods`
-- `majesty-remember-game-speed`
+- `majesty-gold-hd-remember-game-speed`
