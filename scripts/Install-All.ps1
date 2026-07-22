@@ -27,6 +27,7 @@ Invoke-UtilityScript "Downloadable Quests Shortcut" "utilities\Downloadable Ques
 Invoke-UtilityScript "Better Quest Map Pan" "utilities\Better Quest Map Pan\scripts\Install-QuestMapPan.ps1"
 Invoke-UtilityScript "Remember Active Mods" "utilities\Remember Active Mods\scripts\Install-ModPersistence.ps1"
 Invoke-UtilityScript "Remember Game Speed" "utilities\Remember Game Speed\scripts\Install-RememberGameSpeed.ps1"
+Invoke-UtilityScript "Remember Camera Zoom" "utilities\Remember Camera Zoom\scripts\Install-RememberCameraZoom.ps1"
 
 Write-Host ""
 Write-Host "Done. All bundled Majesty Gold HD QoL utilities are installed."

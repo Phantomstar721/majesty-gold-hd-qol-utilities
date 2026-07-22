@@ -22,6 +22,7 @@ Write-Host "Majesty Gold HD QoL Utilities restore"
 Write-Host "This uninstalls all bundled quality-of-life patches."
 Write-Host ""
 
+Invoke-UtilityScript "Remember Camera Zoom" "utilities\Remember Camera Zoom\scripts\Restore-RememberCameraZoom.ps1"
 Invoke-UtilityScript "Remember Game Speed" "utilities\Remember Game Speed\scripts\Restore-RememberGameSpeed.ps1"
 Invoke-UtilityScript "Remember Active Mods" "utilities\Remember Active Mods\scripts\Restore-ModPersistence.ps1"
 Invoke-UtilityScript "Better Quest Map Pan" "utilities\Better Quest Map Pan\scripts\Restore-QuestMapPan.ps1"

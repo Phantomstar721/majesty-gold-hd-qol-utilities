@@ -15,6 +15,8 @@ Steam version of **Majesty Gold HD**.
   automatically on future launches.
 - **Remember Game Speed**: saves the in-quest game-speed slider and restores it for
   saved games, new quests, and future Majesty launches.
+- **Remember Camera Zoom**: saves the in-quest camera zoom button setting and
+  restores it for new quests and future Majesty launches.
 
 ## Install Everything
 
@@ -56,6 +58,10 @@ Remember Game Speed writes `MajestySessionSpeed.bin` in the Majesty install fold
 after you change the in-quest speed slider once. The file is harmless and is left
 behind by the uninstallers so reinstalling the patch keeps your last speed.
 
+Remember Camera Zoom writes `MajestyCameraZoom.bin` in the Majesty install folder
+after you use the in-quest camera zoom button once. The file is harmless and is
+left behind by the uninstallers so reinstalling the patch keeps your last zoom.
+
 ## Included Repos
 
 - `majesty-gold-hd-skip-intro-videos`
@@ -63,3 +69,4 @@ behind by the uninstallers so reinstalling the patch keeps your last speed.
 - `majesty-gold-hd-better-quest-map-pan`
 - `majesty-gold-hd-remember-active-mods`
 - `majesty-gold-hd-remember-game-speed`
+- `majesty-gold-hd-remember-camera-zoom`
