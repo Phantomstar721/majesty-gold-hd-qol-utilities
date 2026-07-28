@@ -9,6 +9,8 @@ $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $PatchSectionName = ".mskp"
 
 $SpeedSliderSaveOffset = 0x6A318
+$SpeedStepSlowerOffset = 0x638F3
+$SpeedStepFasterOffset = 0x63995
 $SpeedRestoreOneOffset = 0xD84F9
 $SpeedRestoreTwoOffset = 0xD8F4A
 $SpeedCopyOneOffset = 0x694C4
@@ -89,6 +91,16 @@ function New-RelativeJumpBytes {
     return $result
 }
 
+function New-RelativeCallBytes {
+    param([uint32]$SourceVa, [uint32]$TargetVa)
+
+    $relative = [int]([int64]$TargetVa - ([int64]$SourceVa + 5))
+    $result = New-Object byte[] 5
+    $result[0] = 0xE8
+    [BitConverter]::GetBytes($relative).CopyTo($result, 1)
+    return $result
+}
+
 function Test-BytesEqual {
     param([byte[]]$Bytes, [int]$Offset, [byte[]]$Expected)
 
@@ -163,6 +175,10 @@ if (-not $section) {
 
 $patchVa = 0x400000 + $section.Rva
 $sliderHook = New-RelativeJumpBytes 0x46AF18 $patchVa
+$stepSlowerHook = New-RelativeCallBytes 0x4644F3 ($patchVa + 0x550)
+$stepSlowerHook += [byte[]]@(0x90)
+$stepFasterHook = New-RelativeCallBytes 0x464595 ($patchVa + 0x550)
+$stepFasterHook += [byte[]]@(0x90)
 $restoreOneHook = New-RelativeJumpBytes 0x4D90F9 ($patchVa + 0x100)
 $restoreOneHook += [byte[]]@(0x90)
 $restoreTwoHook = New-RelativeJumpBytes 0x4D9B4A ($patchVa + 0x240)
@@ -188,6 +204,8 @@ $oldSpeedRestoreHook = New-RelativeJumpBytes 0x4D90F9 ($patchVa + 0x380)
 $oldSpeedRestoreHook += [byte[]]@(0x90)
 
 $sliderIsPatched = Test-BytesEqual $bytes $SpeedSliderSaveOffset $sliderHook
+$stepSlowerIsPatched = Test-BytesEqual $bytes $SpeedStepSlowerOffset $stepSlowerHook
+$stepFasterIsPatched = Test-BytesEqual $bytes $SpeedStepFasterOffset $stepFasterHook
 $restoreOneIsPatched = Test-BytesEqual $bytes $SpeedRestoreOneOffset $restoreOneHook
 $restoreTwoIsPatched = Test-BytesEqual $bytes $SpeedRestoreTwoOffset $restoreTwoHook
 $restoreTwoPreviousPatched = Test-BytesEqual $bytes $SpeedRestoreTwoOffset $previousRestoreTwoHook
@@ -201,7 +219,7 @@ $optionsRestoreOldPatched = Test-BytesEqual $bytes $OldOptionsRestoreOffset $old
 $restoreOneOldPatched = Test-BytesEqual $bytes $SpeedRestoreOneOffset $oldSpeedRestoreHook
 $restoreTwoOldPatched = Test-BytesEqual $bytes $SpeedRestoreTwoOffset $oldSpeedSaveHook
 
-if (-not ($sliderIsPatched -or $restoreOneIsPatched -or $restoreTwoIsPatched -or $restoreTwoPreviousPatched -or $copyOneIsPatched -or $copyTwoIsPatched -or $objectInitOneIsPatched -or $objectInitTwoIsPatched -or $objectInitThreeIsPatched -or $optionsSaveOldPatched -or $optionsRestoreOldPatched -or $restoreOneOldPatched -or $restoreTwoOldPatched)) {
+if (-not ($sliderIsPatched -or $stepSlowerIsPatched -or $stepFasterIsPatched -or $restoreOneIsPatched -or $restoreTwoIsPatched -or $restoreTwoPreviousPatched -or $copyOneIsPatched -or $copyTwoIsPatched -or $objectInitOneIsPatched -or $objectInitTwoIsPatched -or $objectInitThreeIsPatched -or $optionsSaveOldPatched -or $optionsRestoreOldPatched -or $restoreOneOldPatched -or $restoreTwoOldPatched)) {
     Write-Host "MajestyHD.exe: no Remember Game Speed hooks are installed."
     return
 }
@@ -217,6 +235,12 @@ $restoredSizeOfImage = Align-Value ([uint32]($previousSection.Rva + [Math]::Max(
 if ($DryRun) {
     if ($sliderIsPatched) {
         Write-Host ("MajestyHD.exe: would restore slider-save hook at file offset 0x{0:X}." -f $SpeedSliderSaveOffset)
+    }
+    if ($stepSlowerIsPatched) {
+        Write-Host ("MajestyHD.exe: would restore slower-speed save hook at file offset 0x{0:X}." -f $SpeedStepSlowerOffset)
+    }
+    if ($stepFasterIsPatched) {
+        Write-Host ("MajestyHD.exe: would restore faster-speed save hook at file offset 0x{0:X}." -f $SpeedStepFasterOffset)
     }
     if ($restoreOneIsPatched -or $restoreOneOldPatched) {
         Write-Host ("MajestyHD.exe: would restore quest-speed hook at file offset 0x{0:X}." -f $SpeedRestoreOneOffset)
@@ -254,6 +278,12 @@ $restoredBytes = New-Object byte[] $restoredFileSize
 
 if ($sliderIsPatched) {
     Write-Bytes $restoredBytes $SpeedSliderSaveOffset $OriginalSliderSaveBytes
+}
+if ($stepSlowerIsPatched) {
+    Write-Bytes $restoredBytes $SpeedStepSlowerOffset $OriginalSpeedWriteEsiObjectBytes
+}
+if ($stepFasterIsPatched) {
+    Write-Bytes $restoredBytes $SpeedStepFasterOffset $OriginalSpeedWriteEsiObjectBytes
 }
 if ($restoreOneIsPatched -or $restoreOneOldPatched) {
     Write-Bytes $restoredBytes $SpeedRestoreOneOffset $OriginalSpeedWriteBytes

@@ -14,6 +14,10 @@ $PatchVirtualSize = 0x800
 
 $SpeedSliderSaveVa = 0x46AF18
 $SpeedSliderSaveOffset = 0x6A318
+$SpeedStepSlowerVa = 0x4644F3
+$SpeedStepSlowerOffset = 0x638F3
+$SpeedStepFasterVa = 0x464595
+$SpeedStepFasterOffset = 0x63995
 $SpeedRestoreOneVa = 0x4D90F9
 $SpeedRestoreOneOffset = 0xD84F9
 $SpeedRestoreTwoVa = 0x4D9B4A
@@ -184,15 +188,21 @@ function Write-Bytes {
 }
 
 function New-PatchBlob {
-    param([uint32]$PatchVa)
+    param(
+        [uint32]$PatchVa,
+        [string]$SpeedPreferencePath
+    )
 
     $bytes = New-Object byte[] $PatchRawSize
     $speedFileNameVa = $PatchVa + 0x600
-    $wbVa = $PatchVa + 0x640
-    $rbVa = $PatchVa + 0x643
-    $speedTempVa = $PatchVa + 0x700
-    $dirtyFlagVa = $PatchVa + 0x704
+    $wbVa = $PatchVa + 0x700
+    $rbVa = $PatchVa + 0x703
+    $speedTempVa = $PatchVa + 0x780
+    $dirtyFlagVa = $PatchVa + 0x784
     $loadSpeedVa = $PatchVa + 0x500
+    if ([Text.Encoding]::ASCII.GetByteCount($SpeedPreferencePath) -ge 0x100) {
+        throw "The Remember Game Speed preference path is too long to embed safely."
+    }
 
     function Set-Bytes {
         param([int]$Offset, [byte[]]$Patch)
@@ -405,9 +415,43 @@ function New-PatchBlob {
     Set-UInt32 0x532 $FcloseIat
     Set-UInt32 0x53F $dirtyFlagVa
 
-    Set-AsciiZ 0x600 "MajestySessionSpeed.bin"
-    Set-AsciiZ 0x640 "wb"
-    Set-AsciiZ 0x643 "rb"
+    [byte[]]$saveSteppedSpeed = @(
+        0x89, 0xB0, 0x98, 0x00, 0x00, 0x00,
+        0x89, 0x35, 0, 0, 0, 0,
+        0xC6, 0x05, 0, 0, 0, 0, 0x01,
+        0x60,
+        0x68, 0, 0, 0, 0,
+        0x68, 0, 0, 0, 0,
+        0xFF, 0x15, 0, 0, 0, 0,
+        0x83, 0xC4, 0x08,
+        0x85, 0xC0,
+        0x74, 0x1F,
+        0x89, 0xC3,
+        0x53,
+        0x6A, 0x01,
+        0x6A, 0x04,
+        0x68, 0, 0, 0, 0,
+        0xFF, 0x15, 0, 0, 0, 0,
+        0x83, 0xC4, 0x10,
+        0x53,
+        0xFF, 0x15, 0, 0, 0, 0,
+        0x83, 0xC4, 0x04,
+        0x61,
+        0xC3
+    )
+    Set-Bytes 0x550 $saveSteppedSpeed
+    Set-UInt32 0x558 $speedTempVa
+    Set-UInt32 0x55E $dirtyFlagVa
+    Set-UInt32 0x565 $wbVa
+    Set-UInt32 0x56A $speedFileNameVa
+    Set-UInt32 0x570 $FopenIat
+    Set-UInt32 0x583 $speedTempVa
+    Set-UInt32 0x589 $FwriteIat
+    Set-UInt32 0x593 $FcloseIat
+
+    Set-AsciiZ 0x600 $SpeedPreferencePath
+    Set-AsciiZ 0x700 "wb"
+    Set-AsciiZ 0x703 "rb"
 
     return $bytes
 }
@@ -443,6 +487,11 @@ $resolvedGamePath = Get-MajestyPath $GamePath
 $exePath = Join-Path $resolvedGamePath "MajestyHD.exe"
 $backupDir = Join-Path $resolvedGamePath $BackupDirName
 $backupPath = Join-Path $backupDir "MajestyHD.exe.before-remember-game-speed"
+$preferenceDir = Join-Path (
+    [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+) "MajestyHD"
+$preferencePath = Join-Path $preferenceDir "MajestySessionSpeed.bin"
+$legacyPreferencePath = Join-Path $resolvedGamePath "MajestySessionSpeed.bin"
 
 if (-not (Test-Path -LiteralPath $exePath)) {
     throw "Could not find MajestyHD.exe at $exePath."
@@ -480,8 +529,12 @@ if ($existingSection) {
     }
 }
 
-$patchBlob = New-PatchBlob $patchSectionVa
+$patchBlob = New-PatchBlob $patchSectionVa $preferencePath
 $newSliderHook = New-RelativeJumpBytes $SpeedSliderSaveVa $patchSectionVa
+$newStepSlowerHook = New-RelativeCallBytes $SpeedStepSlowerVa ($patchSectionVa + 0x550)
+$newStepSlowerHook += [byte[]]@(0x90)
+$newStepFasterHook = New-RelativeCallBytes $SpeedStepFasterVa ($patchSectionVa + 0x550)
+$newStepFasterHook += [byte[]]@(0x90)
 $newRestoreOneHook = New-RelativeJumpBytes $SpeedRestoreOneVa ($patchSectionVa + 0x100)
 $newRestoreOneHook += [byte[]]@(0x90)
 $newRestoreTwoHook = New-RelativeJumpBytes $SpeedRestoreTwoVa ($patchSectionVa + 0x240)
@@ -508,6 +561,10 @@ $oldSpeedRestoreHook += [byte[]]@(0x90)
 
 $sliderIsStock = Test-BytesEqual $bytes $SpeedSliderSaveOffset $OriginalSliderSaveBytes
 $sliderAlreadyPatched = Test-BytesEqual $bytes $SpeedSliderSaveOffset $newSliderHook
+$stepSlowerIsStock = Test-BytesEqual $bytes $SpeedStepSlowerOffset $OriginalSpeedWriteEsiObjectBytes
+$stepSlowerAlreadyPatched = Test-BytesEqual $bytes $SpeedStepSlowerOffset $newStepSlowerHook
+$stepFasterIsStock = Test-BytesEqual $bytes $SpeedStepFasterOffset $OriginalSpeedWriteEsiObjectBytes
+$stepFasterAlreadyPatched = Test-BytesEqual $bytes $SpeedStepFasterOffset $newStepFasterHook
 $restoreOneIsStock = Test-BytesEqual $bytes $SpeedRestoreOneOffset $OriginalSpeedWriteBytes
 $restoreOneAlreadyPatched = Test-BytesEqual $bytes $SpeedRestoreOneOffset $newRestoreOneHook
 $restoreOneOldPatched = Test-BytesEqual $bytes $SpeedRestoreOneOffset $oldSpeedRestoreHook
@@ -542,10 +599,20 @@ if ($existingSection -and $speedrunSection) {
     Write-Bytes $speedrunBlob 0x469 (New-RelativeJumpBytes ([uint32]($patchSectionVa + 0x469)) ([uint32]($speedrunVa + 0x130)))
     $blobHasSpeedrunBridges = Test-BytesEqual $bytes $patchSectionRawOffset $speedrunBlob
 }
-$installedBlobIsKnown = $blobAlreadyPatched -or $blobHasSpeedrunBridges
+$installedBlobMatchesLayout = if ($speedrunSection) {
+    $blobHasSpeedrunBridges
+} else {
+    $blobAlreadyPatched
+}
 
 if (-not ($sliderIsStock -or $sliderAlreadyPatched)) {
     throw ("MajestyHD.exe has unexpected bytes at the slider-save hook 0x{0:X}." -f $SpeedSliderSaveOffset)
+}
+if (-not ($stepSlowerIsStock -or $stepSlowerAlreadyPatched)) {
+    throw ("MajestyHD.exe has unexpected bytes at the slower-speed save hook 0x{0:X}." -f $SpeedStepSlowerOffset)
+}
+if (-not ($stepFasterIsStock -or $stepFasterAlreadyPatched)) {
+    throw ("MajestyHD.exe has unexpected bytes at the faster-speed save hook 0x{0:X}." -f $SpeedStepFasterOffset)
 }
 if (-not ($restoreOneIsStock -or $restoreOneAlreadyPatched -or $restoreOneOldPatched)) {
     throw ("MajestyHD.exe has unexpected bytes at speed-restore hook 0x{0:X}." -f $SpeedRestoreOneOffset)
@@ -582,13 +649,13 @@ $newSizeOfImage = Align-Value ([uint32]($patchSectionRva + $PatchVirtualSize)) (
 
 Write-Host "Majesty Gold HD Remember Game Speed installer"
 Write-Host "Game path: $resolvedGamePath"
-Write-Host "Preset file: MajestySessionSpeed.bin"
+Write-Host "Preset file: $preferencePath"
 if ($DryRun) {
     Write-Host "Dry run: no files will be changed."
 }
 Write-Host ""
 
-if ($existingSection -and $headerAlreadyPatched -and $sliderAlreadyPatched -and $restoreOneAlreadyPatched -and $restoreTwoAlreadyPatched -and $copyOneAlreadyPatched -and $copyTwoAlreadyPatched -and $objectInitOneAlreadyPatched -and $objectInitTwoAlreadyPatched -and $objectInitThreeAlreadyPatched -and $optionsSaveIsStock -and $optionsRestoreIsStock -and $installedBlobIsKnown) {
+if ($existingSection -and $headerAlreadyPatched -and $sliderAlreadyPatched -and $stepSlowerAlreadyPatched -and $stepFasterAlreadyPatched -and $restoreOneAlreadyPatched -and $restoreTwoAlreadyPatched -and $copyOneAlreadyPatched -and $copyTwoAlreadyPatched -and $objectInitOneAlreadyPatched -and $objectInitTwoAlreadyPatched -and $objectInitThreeAlreadyPatched -and $optionsSaveIsStock -and $optionsRestoreIsStock -and $installedBlobMatchesLayout) {
     Write-Host "MajestyHD.exe: Remember Game Speed is already installed."
     if ($blobHasSpeedrunBridges) {
         Write-Host "MajestyHD.exe: Speedrun Timer integration is present and preserved."
@@ -605,6 +672,12 @@ if ($DryRun) {
     }
     if (-not $sliderAlreadyPatched) {
         Write-Host ("MajestyHD.exe: would patch slider-save hook at file offset 0x{0:X}." -f $SpeedSliderSaveOffset)
+    }
+    if (-not $stepSlowerAlreadyPatched) {
+        Write-Host ("MajestyHD.exe: would patch slower-speed save hook at file offset 0x{0:X}." -f $SpeedStepSlowerOffset)
+    }
+    if (-not $stepFasterAlreadyPatched) {
+        Write-Host ("MajestyHD.exe: would patch faster-speed save hook at file offset 0x{0:X}." -f $SpeedStepFasterOffset)
     }
     if (-not $restoreOneAlreadyPatched) {
         Write-Host ("MajestyHD.exe: would patch quest-speed restore hook at file offset 0x{0:X}." -f $SpeedRestoreOneOffset)
@@ -635,6 +708,16 @@ if ($DryRun) {
 
 Assert-FileWritable $exePath
 
+if (-not (Test-Path -LiteralPath $preferenceDir)) {
+    New-Item -ItemType Directory -Path $preferenceDir | Out-Null
+}
+if (
+    (-not (Test-Path -LiteralPath $preferencePath)) -and
+    (Test-Path -LiteralPath $legacyPreferencePath)
+) {
+    Copy-Item -LiteralPath $legacyPreferencePath -Destination $preferencePath
+}
+
 if (-not (Test-Path -LiteralPath $backupDir)) {
     New-Item -ItemType Directory -Path $backupDir | Out-Null
 }
@@ -652,9 +735,11 @@ if (-not $existingSection) {
 }
 Write-Bytes $patchedBytes $patchSectionHeaderOffset $patchSectionHeader
 
-$blobToWrite = if ($blobHasSpeedrunBridges) { $speedrunBlob } else { $patchBlob }
+$blobToWrite = if ($speedrunSection) { $speedrunBlob } else { $patchBlob }
 Write-Bytes $patchedBytes $patchSectionRawOffset $blobToWrite
 Write-Bytes $patchedBytes $SpeedSliderSaveOffset $newSliderHook
+Write-Bytes $patchedBytes $SpeedStepSlowerOffset $newStepSlowerHook
+Write-Bytes $patchedBytes $SpeedStepFasterOffset $newStepFasterHook
 Write-Bytes $patchedBytes $SpeedRestoreOneOffset $newRestoreOneHook
 Write-Bytes $patchedBytes $SpeedRestoreTwoOffset $newRestoreTwoHook
 Write-Bytes $patchedBytes $SpeedCopyOneOffset $newCopyOneHook

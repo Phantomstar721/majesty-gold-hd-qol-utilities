@@ -13,9 +13,10 @@ patch makes the speed slider behave like a saved preference.
 3. Start Majesty Gold HD.
 4. Start a quest and change the game-speed slider once.
 
-After that, Majesty writes `MajestySessionSpeed.bin` in its install folder and
-uses that saved speed when new quests start, saved games load, and the game is
-relaunched.
+After that, Majesty writes `MajestySessionSpeed.bin` under
+`%LOCALAPPDATA%\MajestyHD`, where the normal non-administrator game process has
+write access. It uses that saved speed when new quests start, saved games load,
+and the game is relaunched.
 
 If Windows blocks the patch because the game is under `Program Files`,
 right-click the install BAT and choose **Run as administrator**.
@@ -28,18 +29,20 @@ Close Majesty Gold HD, then double-click:
 Uninstall - Restore Stock Game Speed.bat
 ```
 
-The saved `MajestySessionSpeed.bin` file is left in the game folder. It is
-harmless, and keeping it means your speed setting is still there if you
-reinstall.
+The saved `%LOCALAPPDATA%\MajestyHD\MajestySessionSpeed.bin` file is left in
+place. It is harmless, and keeping it means your speed setting is still there
+if you reinstall.
 
-To reset the remembered speed, delete `MajestySessionSpeed.bin` from the Majesty
-install folder or change the slider again after reinstalling the patch.
+To reset the remembered speed, delete
+`%LOCALAPPDATA%\MajestyHD\MajestySessionSpeed.bin` or change the slider again
+after reinstalling the patch.
 
 ## What It Changes
 
 The installer patches `MajestyHD.exe` so the game can:
 
-- Save the selected speed when the in-quest settings slider changes.
+- Save the selected speed when the in-quest slider or faster/slower controls
+  change it.
 - Apply the saved speed to the live game object when saved games load.
 - Apply the saved speed during new-quest setup before the game falls back to its
   default speed.

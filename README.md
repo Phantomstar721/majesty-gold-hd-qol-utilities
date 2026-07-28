@@ -54,9 +54,10 @@ need local setup.
 The game-folder patchers try to find the Steam install automatically, including Steam
 library folders on other drives.
 
-Remember Game Speed writes `MajestySessionSpeed.bin` in the Majesty install folder
-after you change the in-quest speed slider once. The file is harmless and is left
-behind by the uninstallers so reinstalling the patch keeps your last speed.
+Remember Game Speed writes `MajestySessionSpeed.bin` under `%LOCALAPPDATA%\MajestyHD`
+after you change the in-quest speed with the slider or faster/slower controls.
+The file is harmless and is left behind by the uninstallers so reinstalling the
+patch keeps your last speed.
 
 Remember Camera Zoom writes `MajestyCameraZoom.bin` in the Majesty install folder
 after you use the in-quest camera zoom button once. The file is harmless and is
