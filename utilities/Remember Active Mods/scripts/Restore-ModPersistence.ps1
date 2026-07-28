@@ -151,11 +151,13 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
 
-$sectionsArePatched = Test-BytesEqual $bytes $NumberOfSectionsOffset $PatchedNumberOfSections
-$sectionsAreStock = Test-BytesEqual $bytes $NumberOfSectionsOffset $OriginalNumberOfSections
-$imageIsPatched = Test-BytesEqual $bytes $SizeOfImageOffset $PatchedSizeOfImage
-$imageIsStock = Test-BytesEqual $bytes $SizeOfImageOffset $OriginalSizeOfImage
+$currentSectionCount = [BitConverter]::ToUInt16($bytes, $NumberOfSectionsOffset)
+$currentSizeOfImage = [BitConverter]::ToUInt32($bytes, $SizeOfImageOffset)
 $headerIsPatched = Test-BytesEqual $bytes $NewSectionHeaderOffset $PatchSectionHeader
+$sectionsArePatched = $headerIsPatched -and $currentSectionCount -ge 5
+$sectionsAreStock = Test-BytesEqual $bytes $NumberOfSectionsOffset $OriginalNumberOfSections
+$imageIsPatched = $headerIsPatched -and $currentSizeOfImage -ge 0x410000
+$imageIsStock = Test-BytesEqual $bytes $SizeOfImageOffset $OriginalSizeOfImage
 $loadIsPatched = Test-BytesEqual $bytes $LoadCallOffset $PatchedLoadCall
 $loadIsStock = Test-BytesEqual $bytes $LoadCallOffset $OriginalLoadCall
 $saveIsPatched = Test-BytesEqual $bytes $SaveCallOffset $PatchedSaveCall
@@ -178,35 +180,41 @@ if (-not $isInstalled) {
     throw "MajestyHD.exe does not match the expected installed or stock mod persistence bytes."
 }
 
-if (-not ($sectionsArePatched -and $imageIsPatched -and $headerIsPatched -and $saveIsPatched)) {
+if (-not ($sectionsArePatched -and $imageIsPatched -and $headerIsPatched -and $saveIsPatched -and $loadIsPatched)) {
     throw "MajestyHD.exe has only part of the mod persistence section patch. Refusing to restore automatically."
 }
-if ($bytes.Length -ne $PatchedFileSize) {
-    throw ("MajestyHD.exe has unexpected patched file size 0x{0:X}. Refusing to truncate automatically." -f $bytes.Length)
-}
+
+$sectionIsLast = $currentSectionCount -eq 5 -and $bytes.Length -eq $PatchedFileSize
 
 if ($DryRun) {
     Write-Host ("MajestyHD.exe: would restore mod-save hook at file offset 0x{0:X}." -f $SaveCallOffset)
     if ($loadIsPatched) {
         Write-Host ("MajestyHD.exe: would restore mod-load hook at file offset 0x{0:X}." -f $LoadCallOffset)
     }
-    Write-Host ("MajestyHD.exe: would remove .mpst section header at file offset 0x{0:X}." -f $NewSectionHeaderOffset)
-    Write-Host ("MajestyHD.exe: would truncate appended .mpst data back to file offset 0x{0:X}." -f $PatchSectionRawOffset)
+    if ($sectionIsLast) {
+        Write-Host ("MajestyHD.exe: would remove .mpst section header at file offset 0x{0:X}." -f $NewSectionHeaderOffset)
+        Write-Host ("MajestyHD.exe: would truncate appended .mpst data back to file offset 0x{0:X}." -f $PatchSectionRawOffset)
+    } else {
+        Write-Host "MajestyHD.exe: would leave the now-inert .mpst section in place because later patch sections depend on the current PE layout."
+    }
     return
 }
 
 Assert-FileWritable $exePath
 
-$restoredBytes = New-Object byte[] $PatchSectionRawOffset
-[Array]::Copy($bytes, 0, $restoredBytes, 0, $PatchSectionRawOffset)
+$restoredLength = if ($sectionIsLast) { $PatchSectionRawOffset } else { $bytes.Length }
+$restoredBytes = New-Object byte[] $restoredLength
+[Array]::Copy($bytes, 0, $restoredBytes, 0, $restoredLength)
 
-Write-Bytes $restoredBytes $NumberOfSectionsOffset $OriginalNumberOfSections
-Write-Bytes $restoredBytes $SizeOfImageOffset $OriginalSizeOfImage
-Write-Bytes $restoredBytes $NewSectionHeaderOffset (New-Object byte[] 40)
-Write-Bytes $restoredBytes $SaveCallOffset $OriginalSaveCall
-if ($loadIsPatched) {
-    Write-Bytes $restoredBytes $LoadCallOffset $OriginalLoadCall
+if ($sectionIsLast) {
+    Write-Bytes $restoredBytes $NumberOfSectionsOffset $OriginalNumberOfSections
+    Write-Bytes $restoredBytes $SizeOfImageOffset $OriginalSizeOfImage
+    Write-Bytes $restoredBytes $NewSectionHeaderOffset (New-Object byte[] 40)
+} else {
+    Write-Bytes $restoredBytes $PatchSectionRawOffset (New-Object byte[] $PatchRawSize)
 }
+Write-Bytes $restoredBytes $SaveCallOffset $OriginalSaveCall
+Write-Bytes $restoredBytes $LoadCallOffset $OriginalLoadCall
 
 [IO.File]::WriteAllBytes($exePath, $restoredBytes)
 

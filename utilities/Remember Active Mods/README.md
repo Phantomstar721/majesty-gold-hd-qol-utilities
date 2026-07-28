@@ -44,6 +44,10 @@ The installer patches `MajestyHD.exe` so the game can:
 The installer creates a backup before patching. The uninstall BAT restores the original
 behavior.
 
+When combining this with other utilities that append executable sections, install
+Remember Active Mods first. Re-running its installer on a compatible multi-patch
+executable is safe; it validates its own section without disturbing later sections.
+
 ## Steam Workshop Note
 
 This is a local EXE patch, not a Steam Workshop mod. Workshop mods are loaded from inside

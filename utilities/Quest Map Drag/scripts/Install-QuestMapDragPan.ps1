@@ -85,7 +85,7 @@ function Assert-FileWritable {
     try {
         $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     } catch {
-        throw "Cannot restore MajestyHD.exe because it is in use or not writable. Close Majesty Gold HD and run this uninstaller again. If the game is closed, right-click the BAT and choose Run as administrator."
+        throw "Cannot patch MajestyHD.exe because it is in use or not writable. Close Majesty Gold HD and run this installer again. If the game is closed, right-click the BAT and choose Run as administrator."
     } finally {
         if ($null -ne $stream) {
             $stream.Dispose()
@@ -108,6 +108,21 @@ function Test-BytesEqual {
     return $true
 }
 
+function Test-ZeroRange {
+    param([byte[]]$Bytes, [int]$Offset, [int]$Length)
+
+    if ($Offset -lt 0 -or ($Offset + $Length) -gt $Bytes.Length) {
+        return $false
+    }
+
+    for ($i = 0; $i -lt $Length; $i++) {
+        if ($Bytes[$Offset + $i] -ne 0) {
+            return $false
+        }
+    }
+    return $true
+}
+
 $resolvedGamePath = Get-MajestyPath $GamePath
 $exePath = Join-Path $resolvedGamePath "MajestyHD.exe"
 
@@ -116,44 +131,48 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 }
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
-$hookIsPatched = Test-BytesEqual $bytes $HookOffset $HookBytes
-$hookIsStock = Test-BytesEqual $bytes $HookOffset $OriginalHookBytes
-$stubIsPatched = Test-BytesEqual $bytes $CaveOffset $StubBytes
 
-Write-Host "Majesty Gold HD Click-Drag Quest Map Pan restore"
+$hookAlreadyPatched = Test-BytesEqual $bytes $HookOffset $HookBytes
+$hookIsStock = Test-BytesEqual $bytes $HookOffset $OriginalHookBytes
+$stubAlreadyPatched = Test-BytesEqual $bytes $CaveOffset $StubBytes
+$stubIsEmpty = Test-ZeroRange $bytes $CaveOffset $StubBytes.Length
+
+if (-not $hookAlreadyPatched -and -not $hookIsStock) {
+    throw ("MajestyHD.exe is not the expected Steam build near file offset 0x{0:X}, or another patch already owns this hook." -f $HookOffset)
+}
+if (-not $stubAlreadyPatched -and -not $stubIsEmpty) {
+    throw ("The click-drag code-cave range at file offset 0x{0:X} is not empty. Refusing to overwrite it." -f $CaveOffset)
+}
+
+Write-Host "Majesty Gold HD Quest Map Drag installer"
 Write-Host "Game path: $resolvedGamePath"
+Write-Host "This lets you hold the left mouse button on the quest map and drag to pan."
 if ($DryRun) {
     Write-Host "Dry run: no files will be changed."
 }
 Write-Host ""
 
-if ($hookIsStock -and -not $stubIsPatched) {
-    Write-Host "MajestyHD.exe: click-drag panning is not installed."
+if ($hookAlreadyPatched -and $stubAlreadyPatched) {
+    Write-Host "MajestyHD.exe: click-drag panning is already installed."
     return
 }
 
-if (-not $hookIsPatched) {
-    throw ("MajestyHD.exe does not contain this click-drag hook at file offset 0x{0:X}. Refusing to restore." -f $HookOffset)
-}
-if (-not $stubIsPatched) {
-    throw ("MajestyHD.exe does not contain this click-drag stub at file offset 0x{0:X}. Refusing to restore." -f $CaveOffset)
-}
-
 if ($DryRun) {
-    Write-Host ("MajestyHD.exe: would restore hook at file offset 0x{0:X}." -f $HookOffset)
-    Write-Host ("MajestyHD.exe: would clear click-drag stub at file offset 0x{0:X}." -f $CaveOffset)
+    Write-Host ("MajestyHD.exe: would patch hook at file offset 0x{0:X}." -f $HookOffset)
+    Write-Host ("MajestyHD.exe: would write click-drag stub at file offset 0x{0:X}." -f $CaveOffset)
     return
 }
 
 Assert-FileWritable $exePath
 
-for ($i = 0; $i -lt $OriginalHookBytes.Length; $i++) {
-    $bytes[$HookOffset + $i] = $OriginalHookBytes[$i]
+for ($i = 0; $i -lt $HookBytes.Length; $i++) {
+    $bytes[$HookOffset + $i] = $HookBytes[$i]
 }
 for ($i = 0; $i -lt $StubBytes.Length; $i++) {
-    $bytes[$CaveOffset + $i] = 0
+    $bytes[$CaveOffset + $i] = $StubBytes[$i]
 }
 
 [IO.File]::WriteAllBytes($exePath, $bytes)
 
-Write-Host "Done. Click-drag quest map panning has been removed."
+Write-Host "Done. Click-drag quest map panning is installed."
+Write-Host "Use Uninstall - Restore Stock Quest Map.bat to remove click-drag panning."

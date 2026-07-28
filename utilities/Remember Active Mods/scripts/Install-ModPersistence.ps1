@@ -392,11 +392,13 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
 
-$sectionsAlreadyPatched = Test-BytesEqual $bytes $NumberOfSectionsOffset $PatchedNumberOfSections
-$sectionsAreStock = Test-BytesEqual $bytes $NumberOfSectionsOffset $OriginalNumberOfSections
-$imageAlreadyPatched = Test-BytesEqual $bytes $SizeOfImageOffset $PatchedSizeOfImage
-$imageIsStock = Test-BytesEqual $bytes $SizeOfImageOffset $OriginalSizeOfImage
+$currentSectionCount = [BitConverter]::ToUInt16($bytes, $NumberOfSectionsOffset)
+$currentSizeOfImage = [BitConverter]::ToUInt32($bytes, $SizeOfImageOffset)
 $headerAlreadyPatched = Test-BytesEqual $bytes $NewSectionHeaderOffset $PatchSectionHeader
+$sectionsAlreadyPatched = $headerAlreadyPatched -and $currentSectionCount -ge 5
+$sectionsAreStock = Test-BytesEqual $bytes $NumberOfSectionsOffset $OriginalNumberOfSections
+$imageAlreadyPatched = $headerAlreadyPatched -and $currentSizeOfImage -ge 0x410000
+$imageIsStock = Test-BytesEqual $bytes $SizeOfImageOffset $OriginalSizeOfImage
 $headerSlotIsEmpty = Test-ZeroRange $bytes $NewSectionHeaderOffset 40
 $loadAlreadyPatched = Test-BytesEqual $bytes $LoadCallOffset $PatchedLoadCall
 $loadIsStock = Test-BytesEqual $bytes $LoadCallOffset $OriginalLoadCall
@@ -404,10 +406,10 @@ $saveAlreadyPatched = Test-BytesEqual $bytes $SaveCallOffset $PatchedSaveCall
 $saveIsStock = Test-BytesEqual $bytes $SaveCallOffset $OriginalSaveCall
 $blobAlreadyPatched = Test-BytesEqual $bytes $PatchSectionRawOffset $patchBlob
 
-if (-not $sectionsAlreadyPatched -and -not $sectionsAreStock) {
-    throw "MajestyHD.exe has an unexpected section count. Refusing to add a patch section."
+if (-not $headerAlreadyPatched -and -not $sectionsAreStock) {
+    throw "MajestyHD.exe already has other appended PE sections but no .mpst section. Install Remember Active Mods before section-adding utilities, or restore those utilities first."
 }
-if (-not $imageAlreadyPatched -and -not $imageIsStock) {
+if (-not $headerAlreadyPatched -and -not $imageIsStock) {
     throw "MajestyHD.exe has an unexpected image size. Refusing to add a patch section."
 }
 if (-not $headerAlreadyPatched -and -not $headerSlotIsEmpty) {
@@ -422,8 +424,8 @@ if (-not $loadAlreadyPatched -and -not $loadIsStock) {
 if ($sectionsAreStock -and $bytes.Length -ne $PatchSectionRawOffset) {
     throw ("MajestyHD.exe has an unexpected file size 0x{0:X}. Expected 0x{1:X} before appending the patch section." -f $bytes.Length, $PatchSectionRawOffset)
 }
-if ($sectionsAlreadyPatched -and $bytes.Length -ne $PatchedFileSize) {
-    throw ("MajestyHD.exe already has the mod persistence section, but its file size is 0x{0:X}. Expected 0x{1:X}." -f $bytes.Length, $PatchedFileSize)
+if ($headerAlreadyPatched -and $bytes.Length -lt $PatchedFileSize) {
+    throw ("MajestyHD.exe already has the mod persistence section, but its file size is only 0x{0:X}. Expected at least 0x{1:X}." -f $bytes.Length, $PatchedFileSize)
 }
 
 Write-Host "Majesty Gold HD Mod Persistence installer"
@@ -465,11 +467,14 @@ if (-not (Test-Path -LiteralPath $backupPath)) {
     Copy-Item -LiteralPath $exePath -Destination $backupPath
 }
 
-$patchedBytes = New-Object byte[] $PatchedFileSize
+$targetLength = if ($headerAlreadyPatched) { $bytes.Length } else { $PatchedFileSize }
+$patchedBytes = New-Object byte[] $targetLength
 [Array]::Copy($bytes, 0, $patchedBytes, 0, $bytes.Length)
 
-Write-Bytes $patchedBytes $NumberOfSectionsOffset $PatchedNumberOfSections
-Write-Bytes $patchedBytes $SizeOfImageOffset $PatchedSizeOfImage
+if (-not $headerAlreadyPatched) {
+    Write-Bytes $patchedBytes $NumberOfSectionsOffset $PatchedNumberOfSections
+    Write-Bytes $patchedBytes $SizeOfImageOffset $PatchedSizeOfImage
+}
 Write-Bytes $patchedBytes $NewSectionHeaderOffset $PatchSectionHeader
 Write-Bytes $patchedBytes $SaveCallOffset $PatchedSaveCall
 Write-Bytes $patchedBytes $LoadCallOffset $PatchedLoadCall

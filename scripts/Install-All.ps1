@@ -1,3 +1,7 @@
+param(
+    [switch]$DryRun
+)
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -15,7 +19,16 @@ function Invoke-UtilityScript {
 
     Write-Host ""
     Write-Host "== $Name =="
-    & $scriptPath
+    if ($DryRun) {
+        $command = Get-Command -Name $scriptPath -CommandType ExternalScript
+        if ($command.Parameters.ContainsKey("DryRun")) {
+            & $scriptPath -DryRun
+        } else {
+            Write-Host "$Name does not expose a dry-run mode; skipped without changes."
+        }
+    } else {
+        & $scriptPath
+    }
 }
 
 Write-Host "Majesty Gold HD QoL Utilities installer"
@@ -24,7 +37,7 @@ Write-Host ""
 
 Invoke-UtilityScript "Skip Intro Videos" "utilities\Skip Intro Videos\scripts\Install-NoIntro.ps1"
 Invoke-UtilityScript "Downloadable Quests Shortcut" "utilities\Downloadable Quests Shortcut\scripts\Install-DownloadableQuestShortcut.ps1"
-Invoke-UtilityScript "Better Quest Map Pan" "utilities\Better Quest Map Pan\scripts\Install-QuestMapPan.ps1"
+Invoke-UtilityScript "Quest Map Drag" "utilities\Quest Map Drag\scripts\Install-QuestMapDragPan.ps1"
 Invoke-UtilityScript "Remember Active Mods" "utilities\Remember Active Mods\scripts\Install-ModPersistence.ps1"
 Invoke-UtilityScript "Remember Game Speed" "utilities\Remember Game Speed\scripts\Install-RememberGameSpeed.ps1"
 Invoke-UtilityScript "Remember Camera Zoom" "utilities\Remember Camera Zoom\scripts\Install-RememberCameraZoom.ps1"

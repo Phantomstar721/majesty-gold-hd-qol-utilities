@@ -46,6 +46,8 @@ The installer patches `MajestyHD.exe` so the game can:
 - Load the saved speed from disk on a fresh Majesty launch.
 - Coexist with the earlier Remember Active Mods patch by adding a separate
   `.mskp` section after any existing `.mpst` section.
+- Recognize and preserve the optional Speedrun Timer bridges when both patches
+  are installed.
 
 This is an EXE patch, not a Steam Workshop mod.
 

@@ -1,4 +1,4 @@
-# Majesty QoL Utilities
+# Majesty Gold HD - QoL Utilities
 
 One download that bundles the Majesty Gold HD quality-of-life utilities built for the
 Steam version of **Majesty Gold HD**.
@@ -9,8 +9,8 @@ Steam version of **Majesty Gold HD**.
   videos.
 - **Downloadable Quests Shortcut**: turns the bottom Freestyle quest icon into a
   fixed shortcut for downloadable/custom quests.
-- **Better Quest Map Pan**: widens the quest-map edge-scroll zone and adds
-  left-click drag panning.
+- **Quest Map Drag**: adds left-click drag panning while preserving the stock
+  quest-map edge-scroll dimensions.
 - **Remember Active Mods**: saves the in-game **Mods > Active** list and restores it
   automatically on future launches.
 - **Remember Game Speed**: saves the in-quest game-speed slider and restores it for
@@ -66,7 +66,7 @@ left behind by the uninstallers so reinstalling the patch keeps your last zoom.
 
 - `majesty-gold-hd-skip-intro-videos`
 - `majesty-gold-hd-downloadable-quests-shortcut`
-- `majesty-gold-hd-better-quest-map-pan`
+- `majest-gold-hd-quest-map-drag`
 - `majesty-gold-hd-remember-active-mods`
 - `majesty-gold-hd-remember-game-speed`
 - `majesty-gold-hd-remember-camera-zoom`

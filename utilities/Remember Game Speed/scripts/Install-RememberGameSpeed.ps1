@@ -531,6 +531,18 @@ $optionsRestoreOldPatched = Test-BytesEqual $bytes $OldOptionsRestoreOffset $old
 $optionsRestoreIsStock = Test-BytesEqual $bytes $OldOptionsRestoreOffset $OriginalOptionsRestoreBytes
 $headerAlreadyPatched = $existingSection -and (Test-BytesEqual $bytes $patchSectionHeaderOffset $patchSectionHeader)
 $blobAlreadyPatched = $existingSection -and (Test-BytesEqual $bytes $patchSectionRawOffset $patchBlob)
+$speedrunSection = $pe.Sections | Where-Object { $_.Name -eq ".msrt" } | Select-Object -First 1
+$speedrunBlob = $null
+$blobHasSpeedrunBridges = $false
+if ($existingSection -and $speedrunSection) {
+    $speedrunVa = [uint32]($pe.ImageBase + $speedrunSection.Rva)
+    $speedrunBlob = New-Object byte[] $PatchRawSize
+    [Array]::Copy($patchBlob, $speedrunBlob, $PatchRawSize)
+    Write-Bytes $speedrunBlob 0x429 (New-RelativeJumpBytes ([uint32]($patchSectionVa + 0x429)) ([uint32]($speedrunVa + 0x100)))
+    Write-Bytes $speedrunBlob 0x469 (New-RelativeJumpBytes ([uint32]($patchSectionVa + 0x469)) ([uint32]($speedrunVa + 0x130)))
+    $blobHasSpeedrunBridges = Test-BytesEqual $bytes $patchSectionRawOffset $speedrunBlob
+}
+$installedBlobIsKnown = $blobAlreadyPatched -or $blobHasSpeedrunBridges
 
 if (-not ($sliderIsStock -or $sliderAlreadyPatched)) {
     throw ("MajestyHD.exe has unexpected bytes at the slider-save hook 0x{0:X}." -f $SpeedSliderSaveOffset)
@@ -576,8 +588,11 @@ if ($DryRun) {
 }
 Write-Host ""
 
-if ($existingSection -and $headerAlreadyPatched -and $sliderAlreadyPatched -and $restoreOneAlreadyPatched -and $restoreTwoAlreadyPatched -and $copyOneAlreadyPatched -and $copyTwoAlreadyPatched -and $objectInitOneAlreadyPatched -and $objectInitTwoAlreadyPatched -and $objectInitThreeAlreadyPatched -and $optionsSaveIsStock -and $optionsRestoreIsStock -and $blobAlreadyPatched) {
+if ($existingSection -and $headerAlreadyPatched -and $sliderAlreadyPatched -and $restoreOneAlreadyPatched -and $restoreTwoAlreadyPatched -and $copyOneAlreadyPatched -and $copyTwoAlreadyPatched -and $objectInitOneAlreadyPatched -and $objectInitTwoAlreadyPatched -and $objectInitThreeAlreadyPatched -and $optionsSaveIsStock -and $optionsRestoreIsStock -and $installedBlobIsKnown) {
     Write-Host "MajestyHD.exe: Remember Game Speed is already installed."
+    if ($blobHasSpeedrunBridges) {
+        Write-Host "MajestyHD.exe: Speedrun Timer integration is present and preserved."
+    }
     return
 }
 
@@ -627,7 +642,8 @@ if (-not (Test-Path -LiteralPath $backupPath)) {
     Copy-Item -LiteralPath $exePath -Destination $backupPath
 }
 
-$patchedBytes = New-Object byte[] $patchedFileSize
+$targetFileSize = if ($existingSection) { $bytes.Length } else { $patchedFileSize }
+$patchedBytes = New-Object byte[] $targetFileSize
 [Array]::Copy($bytes, 0, $patchedBytes, 0, $bytes.Length)
 
 if (-not $existingSection) {
@@ -636,7 +652,8 @@ if (-not $existingSection) {
 }
 Write-Bytes $patchedBytes $patchSectionHeaderOffset $patchSectionHeader
 
-Write-Bytes $patchedBytes $patchSectionRawOffset $patchBlob
+$blobToWrite = if ($blobHasSpeedrunBridges) { $speedrunBlob } else { $patchBlob }
+Write-Bytes $patchedBytes $patchSectionRawOffset $blobToWrite
 Write-Bytes $patchedBytes $SpeedSliderSaveOffset $newSliderHook
 Write-Bytes $patchedBytes $SpeedRestoreOneOffset $newRestoreOneHook
 Write-Bytes $patchedBytes $SpeedRestoreTwoOffset $newRestoreTwoHook
