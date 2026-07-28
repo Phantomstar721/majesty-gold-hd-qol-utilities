@@ -66,7 +66,7 @@ left behind by the uninstallers so reinstalling the patch keeps your last zoom.
 
 - `majesty-gold-hd-skip-intro-videos`
 - `majesty-gold-hd-downloadable-quests-shortcut`
-- `majest-gold-hd-quest-map-drag`
+- `majesty-gold-hd-quest-map-drag`
 - `majesty-gold-hd-remember-active-mods`
 - `majesty-gold-hd-remember-game-speed`
 - `majesty-gold-hd-remember-camera-zoom`
