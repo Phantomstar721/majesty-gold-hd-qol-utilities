@@ -97,6 +97,42 @@ left behind by the uninstallers so reinstalling the patch keeps your last zoom.
 - `majesty-gold-hd-remember-game-speed`
 - `majesty-gold-hd-remember-camera-zoom`
 
+## Maintaining this bundle
+
+Each utility under `utilities\` is a copy. Its own repository is the source of
+truth, so **edit the utility in its own repo, never here.** Anything changed
+directly in `utilities\` is overwritten the next time the bundle is synced.
+
+The sync expects the six repositories to sit beside this one. Pass
+`-SourceRoot` if they live somewhere else.
+
+Pull the latest copies in:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Sync-Utilities.ps1
+```
+
+Check for drift without changing anything. This exits non-zero if the bundle
+does not match, so it can gate a release:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Sync-Utilities.ps1 -Check
+```
+
+It also reports orphans: files here with no counterpart in the source repo,
+which is usually a leftover from a rename. Those are listed rather than deleted,
+so removing them is a deliberate choice.
+
+Build the release archive. This runs the drift check first and refuses to build
+a bundle that does not match its sources, so the zip always reflects the tree:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Build-Bundle.ps1
+```
+
+The archive is written to `dist\`, which is not tracked in git. Maintainer
+scripts are excluded from it.
+
 ## If you ever need a clean executable
 
 These utilities uninstall by reversing their own byte changes, so you do not

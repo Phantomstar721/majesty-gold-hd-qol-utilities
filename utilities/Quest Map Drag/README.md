@@ -38,6 +38,16 @@ with a path:
 powershell.exe -ExecutionPolicy Bypass -File .\scripts\Install-QuestMapDragPan.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Majesty HD"
 ```
 
+## Non-default game location
+
+The installer finds Steam automatically, including libraries on other drives and
+an install folder that has been renamed. If it still cannot find the game, run
+the script directly with a path:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Install-QuestMapDragPan.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Majesty HD"
+```
+
 ## If you ever need a clean executable
 
 These utilities uninstall by reversing their own byte changes, so you do not

@@ -62,14 +62,14 @@ This is a local EXE patch, not a Steam Workshop mod. Workshop mods are loaded fr
 Majesty after the game is already running, which is too late to change how the game
 initializes its active mod list.
 
-## Custom Steam Library Folders
+## Non-default game location
 
-The patcher tries to find the Steam install automatically, including Steam library folders
-on other drives. If it cannot find the game, run the PowerShell script manually with a
-path:
+The installer finds Steam automatically, including libraries on other drives and
+an install folder that has been renamed. If it still cannot find the game, run
+the script directly with a path:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\scripts\Install-ModPersistence.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Majesty HD"
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Install-ModPersistence.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Majesty HD"
 ```
 
 ## If you ever need a clean executable

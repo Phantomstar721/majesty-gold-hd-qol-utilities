@@ -61,6 +61,16 @@ project. If Steam updates `MajestyHD.exe`, run the installer again. The installe
 checks the bytes it plans to patch and stops if the executable is not in a known
 stock or already-patched state.
 
+## Non-default game location
+
+The installer finds Steam automatically, including libraries on other drives and
+an install folder that has been renamed. If it still cannot find the game, run
+the script directly with a path:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Install-RememberGameSpeed.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Majesty HD"
+```
+
 ## If you ever need a clean executable
 
 These utilities uninstall by reversing their own byte changes, so you do not
