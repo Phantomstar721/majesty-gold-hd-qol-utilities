@@ -1,4 +1,6 @@
 param(
+    [string]$GamePath = "",
+    [string]$PrefsPath = "",
     [switch]$DryRun
 )
 
@@ -17,24 +19,50 @@ function Invoke-UtilityScript {
         throw "Could not find $Name script at $scriptPath."
     }
 
+    $command = Get-Command -Name $scriptPath -CommandType ExternalScript
+
+    # Forward only what each utility actually accepts. Skip Intro Videos edits
+    # the Majesty preferences file rather than the game folder, so it takes
+    # -PrefsPath instead of -GamePath.
+    $arguments = @{}
+    if ($GamePath -and $command.Parameters.ContainsKey("GamePath")) {
+        $arguments["GamePath"] = $GamePath
+    }
+    if ($PrefsPath -and $command.Parameters.ContainsKey("PrefsPath")) {
+        $arguments["PrefsPath"] = $PrefsPath
+    }
+
     Write-Host ""
     Write-Host "== $Name =="
     if ($DryRun) {
-        $command = Get-Command -Name $scriptPath -CommandType ExternalScript
-        if ($command.Parameters.ContainsKey("DryRun")) {
-            & $scriptPath -DryRun
-        } else {
+        if (-not $command.Parameters.ContainsKey("DryRun")) {
             Write-Host "$Name does not expose a dry-run mode; skipped without changes."
+            return
         }
-    } else {
-        & $scriptPath
+        $arguments["DryRun"] = $true
     }
+
+    & $scriptPath @arguments
 }
 
 Write-Host "Majesty Gold HD QoL Utilities installer"
 Write-Host "This installs all bundled quality-of-life patches."
+if ($GamePath) {
+    Write-Host "Game path: $GamePath"
+} else {
+    Write-Host "Game path: auto-detected by each utility."
+}
+if ($PrefsPath) {
+    Write-Host "Prefs path: $PrefsPath"
+}
+if ($DryRun) {
+    Write-Host "Dry run: no files will be changed."
+}
 Write-Host ""
 
+# Install order no longer matters. Each utility works out where its patch
+# section goes by reading MajestyHD.exe, and the ones that share code sites
+# hand off to each other in either direction.
 Invoke-UtilityScript "Skip Intro Videos" "utilities\Skip Intro Videos\scripts\Install-NoIntro.ps1"
 Invoke-UtilityScript "Downloadable Quests Shortcut" "utilities\Downloadable Quests Shortcut\scripts\Install-DownloadableQuestShortcut.ps1"
 Invoke-UtilityScript "Quest Map Drag" "utilities\Quest Map Drag\scripts\Install-QuestMapDragPan.ps1"
@@ -43,5 +71,9 @@ Invoke-UtilityScript "Remember Game Speed" "utilities\Remember Game Speed\script
 Invoke-UtilityScript "Remember Camera Zoom" "utilities\Remember Camera Zoom\scripts\Install-RememberCameraZoom.ps1"
 
 Write-Host ""
-Write-Host "Done. All bundled Majesty Gold HD QoL utilities are installed."
-Write-Host "Launch Majesty Gold HD normally from Steam."
+if ($DryRun) {
+    Write-Host "Dry run complete. Nothing was changed."
+} else {
+    Write-Host "Done. All bundled Majesty Gold HD QoL utilities are installed."
+    Write-Host "Launch Majesty Gold HD normally from Steam."
+}

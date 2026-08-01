@@ -36,7 +36,7 @@ function Write-U32 {
 function Test-BytesEqual {
     param([byte[]]$Bytes, [int]$Offset, [byte[]]$Expected)
 
-    if ($Bytes.Length -lt ($Offset + $Expected.Length)) {
+    if ($Offset -lt 0 -or ($Offset + $Expected.Length) -gt $Bytes.Length) {
         return $false
     }
     for ($i = 0; $i -lt $Expected.Length; $i++) {
@@ -50,6 +50,17 @@ function Test-BytesEqual {
 function Write-Bytes {
     param([byte[]]$Bytes, [int]$Offset, [byte[]]$Patch)
 
+    # A null or empty patch means the caller built the wrong thing. PowerShell
+    # evaluates $null.Length to $null, so the loop below would silently write
+    # nothing, leaving a hooked-but-empty code section and a game that jumps
+    # into blank memory. Fail loudly instead of shipping a broken exe.
+    if ($null -eq $Patch -or $Patch.Length -eq 0) {
+        throw ("Write-Bytes received no data for file offset 0x{0:X}. This is an installer bug, not a problem with your game files." -f $Offset)
+    }
+    if ($Offset -lt 0 -or ($Offset + $Patch.Length) -gt $Bytes.Length) {
+        throw ("Write-Bytes range 0x{0:X}..0x{1:X} falls outside the {2}-byte image." -f $Offset, ($Offset + $Patch.Length - 1), $Bytes.Length)
+    }
+
     for ($i = 0; $i -lt $Patch.Length; $i++) {
         $Bytes[$Offset + $i] = $Patch[$i]
     }
@@ -61,12 +72,17 @@ function Get-MajestyPath {
     if ($RequestedPath) {
         return $RequestedPath
     }
-
     if (Test-Path -LiteralPath $DefaultGamePath) {
         return $DefaultGamePath
     }
 
-    $steamRoots = @()
+    # Majesty Gold HD is Steam app 73230.
+    $appId = 73230
+    $searched = New-Object System.Collections.Generic.List[string]
+    $searched.Add($DefaultGamePath)
+
+    # Steam install roots from the registry.
+    $steamRoots = New-Object System.Collections.Generic.List[string]
     foreach ($key in @(
         "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam",
         "HKLM:\SOFTWARE\Valve\Steam",
@@ -75,37 +91,58 @@ function Get-MajestyPath {
         try {
             $installPath = (Get-ItemProperty -LiteralPath $key -ErrorAction Stop).InstallPath
             if ($installPath) {
-                $steamRoots += $installPath
+                $steamRoots.Add($installPath)
             }
         } catch {
         }
     }
 
-    foreach ($root in $steamRoots | Select-Object -Unique) {
-        $candidate = Join-Path $root "steamapps\common\Majesty HD"
-        if (Test-Path -LiteralPath $candidate) {
-            return $candidate
-        }
-    }
-
-    foreach ($root in $steamRoots | Select-Object -Unique) {
-        $libraryFile = Join-Path $root "steamapps\libraryfolders.vdf"
+    # Every Steam library, including the install roots themselves. A second
+    # drive is the common case this exists for.
+    $libraryRoots = New-Object System.Collections.Generic.List[string]
+    foreach ($steamRoot in $steamRoots) {
+        $libraryRoots.Add($steamRoot)
+        $libraryFile = Join-Path $steamRoot "steamapps\libraryfolders.vdf"
         if (-not (Test-Path -LiteralPath $libraryFile)) {
             continue
         }
-
         foreach ($line in Get-Content -LiteralPath $libraryFile) {
             if ($line -match '"path"\s+"([^"]+)"') {
-                $libraryRoot = $Matches[1] -replace "\\\\", "\"
-                $candidate = Join-Path $libraryRoot "steamapps\common\Majesty HD"
-                if (Test-Path -LiteralPath $candidate) {
-                    return $candidate
+                $libraryRoots.Add(($Matches[1] -replace '\\\\', '\'))
+            }
+        }
+    }
+
+    foreach ($libraryRoot in ($libraryRoots | Select-Object -Unique)) {
+        $candidate = Join-Path $libraryRoot "steamapps\common\Majesty HD"
+        $searched.Add($candidate)
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+
+        # The install folder can be named something else. Ask Steam's own
+        # manifest rather than assuming.
+        $manifest = Join-Path $libraryRoot ("steamapps\appmanifest_" + $appId + ".acf")
+        if (-not (Test-Path -LiteralPath $manifest)) {
+            continue
+        }
+        foreach ($line in Get-Content -LiteralPath $manifest) {
+            if ($line -match '"installdir"\s+"([^"]+)"') {
+                $named = Join-Path $libraryRoot ("steamapps\common\" + ($Matches[1] -replace '\\\\', '\'))
+                $searched.Add($named)
+                if (Test-Path -LiteralPath $named) {
+                    return $named
                 }
             }
         }
     }
 
-    throw "Could not find Majesty HD. Re-run with -GamePath ""C:\Path\To\Majesty HD""."
+    $lines = ($searched | Select-Object -Unique | ForEach-Object { "  $_" }) -join [Environment]::NewLine
+    throw (
+        "Could not find Majesty Gold HD." + [Environment]::NewLine +
+        "Looked in:" + [Environment]::NewLine + $lines + [Environment]::NewLine +
+        'Re-run with -GamePath "D:\Path\To\Majesty HD".'
+    )
 }
 
 function Test-Magic {
@@ -245,7 +282,7 @@ function Assert-FileWritable {
         $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     } catch {
         $name = Split-Path -Leaf $Path
-        throw "Cannot patch $name because it is in use or not writable. Close Majesty Gold HD and run this installer again. If the game is closed, right-click the BAT and choose Run as administrator."
+        throw "Cannot modify $name because it is in use or not writable. Close Majesty Gold HD and try again. If the game is already closed, right-click the BAT and choose Run as administrator."
     } finally {
         if ($null -ne $stream) {
             $stream.Dispose()
@@ -438,10 +475,10 @@ if (-not $DryRun) {
     if (-not (Test-Path -LiteralPath $backupDir)) {
         New-Item -ItemType Directory -Path $backupDir | Out-Null
     }
-    $exeBackup = Join-Path $backupDir "MajestyHD.exe.original"
-    if (-not (Test-Path -LiteralPath $exeBackup)) {
-        Copy-Item -LiteralPath $exePath -Destination $exeBackup
-    }
+    # No whole-file exe backup. The uninstaller reverses these two 4-byte edits
+    # instead, which leaves other utilities' patches to the same file intact.
+    # The UIData_*.dat backups below are still needed: those are bulk data
+    # rewrites, not small hooks, and nothing else touches them.
     Write-Bytes $exeBytes $FreestyleIconCallbackOffset $CustomQuestCallbackBytes
     Write-Bytes $exeBytes $CustomQuestCompareImmediateOffset $FreestyleObjectBytes
     [IO.File]::WriteAllBytes($exePath, $exeBytes)

@@ -6,8 +6,51 @@ param(
 $ErrorActionPreference = "Stop"
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
+$BackupDirName = "_quest_map_drag_originals"
 $HookOffset = 0x79FB5
 $CaveOffset = 0x334280
+
+function Save-PreInstallBackup {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$BackupDir,
+        [Parameter(Mandatory = $true)][string]$BackupPath,
+        [Parameter(Mandatory = $true)][string]$UtilityName
+    )
+
+    if (-not (Test-Path -LiteralPath $BackupDir)) {
+        New-Item -ItemType Directory -Path $BackupDir | Out-Null
+    }
+    if (Test-Path -LiteralPath $BackupPath) {
+        return
+    }
+
+    Copy-Item -LiteralPath $SourcePath -Destination $BackupPath
+
+    # Say plainly what this copy is. It is NOT a stock game file, and the
+    # uninstaller never reads it: uninstalling reverses this utility's own byte
+    # changes. Without this note the filename alone implies otherwise.
+    $leaf = Split-Path -Leaf $BackupPath
+    $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $note = @"
+$leaf
+
+A copy of MajestyHD.exe taken immediately before $UtilityName was first
+installed, on $stamp.
+
+This is NOT guaranteed to be an unmodified Majesty Gold HD executable. It is
+whatever was on disk at that moment, which may already include other patches
+you had installed.
+
+You do not need this file to uninstall. The uninstaller reverses its own byte
+changes and never reads this copy. It is kept only as a convenience snapshot.
+
+For a guaranteed clean executable, use Steam instead:
+  Right-click Majesty Gold HD > Properties > Installed Files >
+  Verify integrity of game files
+"@
+    Set-Content -LiteralPath (Join-Path $BackupDir "READ ME - what this file is.txt") -Value $note -Encoding ASCII
+}
 
 [byte[]]$OriginalHookBytes = @(0x8B, 0x44, 0x24, 0x40, 0x8B, 0x4C, 0x24, 0x20)
 [byte[]]$HookBytes = @(0xE9, 0xC6, 0xA2, 0x2B, 0x00, 0x90, 0x90, 0x90)
@@ -31,12 +74,17 @@ function Get-MajestyPath {
     if ($RequestedPath) {
         return $RequestedPath
     }
-
     if (Test-Path -LiteralPath $DefaultGamePath) {
         return $DefaultGamePath
     }
 
-    $steamRoots = @()
+    # Majesty Gold HD is Steam app 73230.
+    $appId = 73230
+    $searched = New-Object System.Collections.Generic.List[string]
+    $searched.Add($DefaultGamePath)
+
+    # Steam install roots from the registry.
+    $steamRoots = New-Object System.Collections.Generic.List[string]
     foreach ($key in @(
         "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam",
         "HKLM:\SOFTWARE\Valve\Steam",
@@ -45,37 +93,58 @@ function Get-MajestyPath {
         try {
             $installPath = (Get-ItemProperty -LiteralPath $key -ErrorAction Stop).InstallPath
             if ($installPath) {
-                $steamRoots += $installPath
+                $steamRoots.Add($installPath)
             }
         } catch {
         }
     }
 
-    foreach ($root in $steamRoots | Select-Object -Unique) {
-        $candidate = Join-Path $root "steamapps\common\Majesty HD"
-        if (Test-Path -LiteralPath $candidate) {
-            return $candidate
-        }
-    }
-
-    foreach ($root in $steamRoots | Select-Object -Unique) {
-        $libraryFile = Join-Path $root "steamapps\libraryfolders.vdf"
+    # Every Steam library, including the install roots themselves. A second
+    # drive is the common case this exists for.
+    $libraryRoots = New-Object System.Collections.Generic.List[string]
+    foreach ($steamRoot in $steamRoots) {
+        $libraryRoots.Add($steamRoot)
+        $libraryFile = Join-Path $steamRoot "steamapps\libraryfolders.vdf"
         if (-not (Test-Path -LiteralPath $libraryFile)) {
             continue
         }
-
         foreach ($line in Get-Content -LiteralPath $libraryFile) {
             if ($line -match '"path"\s+"([^"]+)"') {
-                $libraryRoot = $Matches[1] -replace "\\\\", "\"
-                $candidate = Join-Path $libraryRoot "steamapps\common\Majesty HD"
-                if (Test-Path -LiteralPath $candidate) {
-                    return $candidate
+                $libraryRoots.Add(($Matches[1] -replace '\\\\', '\'))
+            }
+        }
+    }
+
+    foreach ($libraryRoot in ($libraryRoots | Select-Object -Unique)) {
+        $candidate = Join-Path $libraryRoot "steamapps\common\Majesty HD"
+        $searched.Add($candidate)
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+
+        # The install folder can be named something else. Ask Steam's own
+        # manifest rather than assuming.
+        $manifest = Join-Path $libraryRoot ("steamapps\appmanifest_" + $appId + ".acf")
+        if (-not (Test-Path -LiteralPath $manifest)) {
+            continue
+        }
+        foreach ($line in Get-Content -LiteralPath $manifest) {
+            if ($line -match '"installdir"\s+"([^"]+)"') {
+                $named = Join-Path $libraryRoot ("steamapps\common\" + ($Matches[1] -replace '\\\\', '\'))
+                $searched.Add($named)
+                if (Test-Path -LiteralPath $named) {
+                    return $named
                 }
             }
         }
     }
 
-    throw "Could not find Majesty HD. Re-run with -GamePath ""C:\Path\To\Majesty HD""."
+    $lines = ($searched | Select-Object -Unique | ForEach-Object { "  $_" }) -join [Environment]::NewLine
+    throw (
+        "Could not find Majesty Gold HD." + [Environment]::NewLine +
+        "Looked in:" + [Environment]::NewLine + $lines + [Environment]::NewLine +
+        'Re-run with -GamePath "D:\Path\To\Majesty HD".'
+    )
 }
 
 function Assert-FileWritable {
@@ -85,7 +154,8 @@ function Assert-FileWritable {
     try {
         $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     } catch {
-        throw "Cannot patch MajestyHD.exe because it is in use or not writable. Close Majesty Gold HD and run this installer again. If the game is closed, right-click the BAT and choose Run as administrator."
+        $name = Split-Path -Leaf $Path
+        throw "Cannot modify $name because it is in use or not writable. Close Majesty Gold HD and try again. If the game is already closed, right-click the BAT and choose Run as administrator."
     } finally {
         if ($null -ne $stream) {
             $stream.Dispose()
@@ -99,7 +169,6 @@ function Test-BytesEqual {
     if ($Offset -lt 0 -or ($Offset + $Expected.Length) -gt $Bytes.Length) {
         return $false
     }
-
     for ($i = 0; $i -lt $Expected.Length; $i++) {
         if ($Bytes[$Offset + $i] -ne $Expected[$i]) {
             return $false
@@ -114,7 +183,6 @@ function Test-ZeroRange {
     if ($Offset -lt 0 -or ($Offset + $Length) -gt $Bytes.Length) {
         return $false
     }
-
     for ($i = 0; $i -lt $Length; $i++) {
         if ($Bytes[$Offset + $i] -ne 0) {
             return $false
@@ -164,6 +232,12 @@ if ($DryRun) {
 }
 
 Assert-FileWritable $exePath
+
+# This utility previously wrote no backup at all, unlike the others. Kept for
+# consistency; the uninstaller still works purely by reversing its own bytes.
+Save-PreInstallBackup $exePath (Join-Path $resolvedGamePath $BackupDirName) `
+    (Join-Path (Join-Path $resolvedGamePath $BackupDirName) "MajestyHD.exe.before-quest-map-drag") `
+    "Quest Map Drag"
 
 for ($i = 0; $i -lt $HookBytes.Length; $i++) {
     $bytes[$HookOffset + $i] = $HookBytes[$i]

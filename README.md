@@ -28,11 +28,26 @@ Steam version of **Majesty Gold HD**.
 If Windows blocks the patch because Majesty is installed under `Program Files`,
 right-click the install BAT and choose **Run as administrator**.
 
+### Non-default game location
+
+The BAT files auto-detect Steam. If your game is somewhere the detection misses,
+run the installer directly and point it at the folder:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Install-All.ps1 -GamePath "D:\Path\To\Majesty HD"
+```
+
+Add `-DryRun` to see exactly what would change without touching anything.
+
 ## Pick And Choose
 
 Each utility is also included separately under `utilities\`.
 
 Open the folder for the utility you want and run its own install or uninstall BAT.
+
+**Install order does not matter.** Each utility works out where its own patch
+goes by reading `MajestyHD.exe`, and the two that share code sites hand off to
+each other in either direction.
 
 ## Uninstall Everything
 
@@ -44,6 +59,16 @@ Uninstall - Restore Stock Majesty QoL.bat
 
 This restores the stock behavior changed by the bundled utilities. Individual
 uninstallers are also available in each utility folder.
+
+**Uninstall order does matter.** Three of these append a section to
+`MajestyHD.exe`, and a section can only be removed while it is the last one
+added, so the most recently installed must come off first. The bundle
+uninstaller already does this for you. If you uninstall utilities individually
+and get a message about a section not being last, remove the newer ones first
+and try again.
+
+If you also installed the standalone **Speedrun Timer**, uninstall that before
+running the bundle uninstaller, since its section sits after everything here.
 
 ## Notes
 
@@ -59,7 +84,7 @@ after you change the in-quest speed with the slider or faster/slower controls.
 The file is harmless and is left behind by the uninstallers so reinstalling the
 patch keeps your last speed.
 
-Remember Camera Zoom writes `MajestyCameraZoom.bin` in the Majesty install folder
+Remember Camera Zoom writes `MajestyCameraZoom.bin` under `%LOCALAPPDATA%\MajestyHD`
 after you use the in-quest camera zoom button once. The file is harmless and is
 left behind by the uninstallers so reinstalling the patch keeps your last zoom.
 
@@ -71,3 +96,19 @@ left behind by the uninstallers so reinstalling the patch keeps your last zoom.
 - `majesty-gold-hd-remember-active-mods`
 - `majesty-gold-hd-remember-game-speed`
 - `majesty-gold-hd-remember-camera-zoom`
+
+## If you ever need a clean executable
+
+These utilities uninstall by reversing their own byte changes, so you do not
+need a backup copy to remove them. The `_*_originals` folder each installer
+creates is only a convenience snapshot of whatever was on disk beforehand, which
+may already include other patches. It is not a stock game file.
+
+For a guaranteed unmodified executable, let Steam do it:
+
+1. Right-click **Majesty Gold HD** in your Steam library
+2. **Properties** > **Installed Files**
+3. **Verify integrity of game files**
+
+Steam will replace `MajestyHD.exe` with the original. You can then reinstall
+whichever utilities you want.

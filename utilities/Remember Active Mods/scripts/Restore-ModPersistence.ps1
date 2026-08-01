@@ -7,25 +7,70 @@ $ErrorActionPreference = "Stop"
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 
-$NumberOfSectionsOffset = 0x10E
-$SizeOfImageOffset = 0x158
-$NewSectionHeaderOffset = 0x2A0
+$SectionName = ".mpst"
 $LoadCallOffset = 0x77D30
 $LoadCallVa = 0x478930
 $SaveCallOffset = 0x124196
 $SaveCallVa = 0x524D96
 
-$PatchSectionRawOffset = 0x3C0600
-$PatchSectionVa = 0x80E000
 $PatchRawSize = 0x1200
-$PatchedFileSize = $PatchSectionRawOffset + $PatchRawSize
 
-[byte[]]$OriginalNumberOfSections = @(0x04, 0x00)
-[byte[]]$PatchedNumberOfSections = @(0x05, 0x00)
-[byte[]]$OriginalSizeOfImage = @(0x00, 0xE0, 0x40, 0x00)
-[byte[]]$PatchedSizeOfImage = @(0x00, 0x00, 0x41, 0x00)
 [byte[]]$OriginalLoadCall = @(0xE8, 0xAB, 0xCA, 0x0A, 0x00)
 [byte[]]$OriginalSaveCall = @(0xE8, 0xA5, 0x07, 0x00, 0x00)
+
+function Read-U16 {
+    param([byte[]]$Bytes, [int]$Offset)
+    return [BitConverter]::ToUInt16($Bytes, $Offset)
+}
+
+function Read-U32 {
+    param([byte[]]$Bytes, [int]$Offset)
+    return [BitConverter]::ToUInt32($Bytes, $Offset)
+}
+
+function Align-Value {
+    param([uint32]$Value, [uint32]$Alignment)
+    return [uint32](([uint64]([Math]::Ceiling([double]$Value / [double]$Alignment))) * [uint64]$Alignment)
+}
+
+function Get-PeInfo {
+    param([byte[]]$Bytes)
+
+    $peOffset = Read-U32 $Bytes 0x3C
+    $sectionCountOffset = $peOffset + 6
+    $sectionCount = Read-U16 $Bytes $sectionCountOffset
+    $optionalHeaderSize = Read-U16 $Bytes ($peOffset + 20)
+    $optionalHeaderOffset = $peOffset + 24
+    $sectionTableOffset = $optionalHeaderOffset + $optionalHeaderSize
+
+    $sections = @()
+    for ($i = 0; $i -lt $sectionCount; $i++) {
+        $off = $sectionTableOffset + ($i * 40)
+        $name = [Text.Encoding]::ASCII.GetString($Bytes[$off..($off + 7)]).TrimEnd([char]0)
+        $sections += [pscustomobject]@{
+            Index = $i
+            HeaderOffset = $off
+            Name = $name
+            VirtualSize = Read-U32 $Bytes ($off + 8)
+            Rva = Read-U32 $Bytes ($off + 12)
+            RawSize = Read-U32 $Bytes ($off + 16)
+            RawOffset = Read-U32 $Bytes ($off + 20)
+        }
+    }
+
+    return [pscustomobject]@{
+        SectionCountOffset = $sectionCountOffset
+        SectionCount = $sectionCount
+        ImageBase = Read-U32 $Bytes ($optionalHeaderOffset + 28)
+        SectionAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 32)
+        FileAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 36)
+        SizeOfImageOffset = $optionalHeaderOffset + 56
+        SizeOfImage = Read-U32 $Bytes ($optionalHeaderOffset + 56)
+        SizeOfHeaders = Read-U32 $Bytes ($optionalHeaderOffset + 60)
+        SectionTableOffset = $sectionTableOffset
+        Sections = $sections
+    }
+}
 
 function New-RelativeCallBytes {
     param([uint32]$SourceVa, [uint32]$TargetVa)
@@ -37,22 +82,6 @@ function New-RelativeCallBytes {
     return $result
 }
 
-[byte[]]$PatchedSaveCall = New-RelativeCallBytes $SaveCallVa $PatchSectionVa
-[byte[]]$PatchedLoadCall = New-RelativeCallBytes $LoadCallVa ($PatchSectionVa + 0x300)
-
-function New-SectionHeader {
-    $bytes = New-Object byte[] 40
-    [Text.Encoding]::ASCII.GetBytes(".mpst").CopyTo($bytes, 0)
-    [BitConverter]::GetBytes([uint32]0x11AF).CopyTo($bytes, 8)
-    [BitConverter]::GetBytes([uint32]0x40E000).CopyTo($bytes, 12)
-    [BitConverter]::GetBytes([uint32]$PatchRawSize).CopyTo($bytes, 16)
-    [BitConverter]::GetBytes([uint32]$PatchSectionRawOffset).CopyTo($bytes, 20)
-    [BitConverter]::GetBytes([uint32]0x60000020).CopyTo($bytes, 36)
-    return $bytes
-}
-
-[byte[]]$PatchSectionHeader = New-SectionHeader
-
 function Get-MajestyPath {
     param([string]$RequestedPath)
 
@@ -63,7 +92,13 @@ function Get-MajestyPath {
         return $DefaultGamePath
     }
 
-    $steamRoots = @()
+    # Majesty Gold HD is Steam app 73230.
+    $appId = 73230
+    $searched = New-Object System.Collections.Generic.List[string]
+    $searched.Add($DefaultGamePath)
+
+    # Steam install roots from the registry.
+    $steamRoots = New-Object System.Collections.Generic.List[string]
     foreach ($key in @(
         "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam",
         "HKLM:\SOFTWARE\Valve\Steam",
@@ -72,37 +107,58 @@ function Get-MajestyPath {
         try {
             $installPath = (Get-ItemProperty -LiteralPath $key -ErrorAction Stop).InstallPath
             if ($installPath) {
-                $steamRoots += $installPath
+                $steamRoots.Add($installPath)
             }
         } catch {
         }
     }
 
-    foreach ($root in $steamRoots | Select-Object -Unique) {
-        $candidate = Join-Path $root "steamapps\common\Majesty HD"
-        if (Test-Path -LiteralPath $candidate) {
-            return $candidate
-        }
-    }
-
-    foreach ($root in $steamRoots | Select-Object -Unique) {
-        $libraryFile = Join-Path $root "steamapps\libraryfolders.vdf"
+    # Every Steam library, including the install roots themselves. A second
+    # drive is the common case this exists for.
+    $libraryRoots = New-Object System.Collections.Generic.List[string]
+    foreach ($steamRoot in $steamRoots) {
+        $libraryRoots.Add($steamRoot)
+        $libraryFile = Join-Path $steamRoot "steamapps\libraryfolders.vdf"
         if (-not (Test-Path -LiteralPath $libraryFile)) {
             continue
         }
-
         foreach ($line in Get-Content -LiteralPath $libraryFile) {
             if ($line -match '"path"\s+"([^"]+)"') {
-                $libraryRoot = $Matches[1] -replace "\\\\", "\"
-                $candidate = Join-Path $libraryRoot "steamapps\common\Majesty HD"
-                if (Test-Path -LiteralPath $candidate) {
-                    return $candidate
+                $libraryRoots.Add(($Matches[1] -replace '\\\\', '\'))
+            }
+        }
+    }
+
+    foreach ($libraryRoot in ($libraryRoots | Select-Object -Unique)) {
+        $candidate = Join-Path $libraryRoot "steamapps\common\Majesty HD"
+        $searched.Add($candidate)
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+
+        # The install folder can be named something else. Ask Steam's own
+        # manifest rather than assuming.
+        $manifest = Join-Path $libraryRoot ("steamapps\appmanifest_" + $appId + ".acf")
+        if (-not (Test-Path -LiteralPath $manifest)) {
+            continue
+        }
+        foreach ($line in Get-Content -LiteralPath $manifest) {
+            if ($line -match '"installdir"\s+"([^"]+)"') {
+                $named = Join-Path $libraryRoot ("steamapps\common\" + ($Matches[1] -replace '\\\\', '\'))
+                $searched.Add($named)
+                if (Test-Path -LiteralPath $named) {
+                    return $named
                 }
             }
         }
     }
 
-    throw "Could not find Majesty HD. Re-run with -GamePath ""C:\Path\To\Majesty HD""."
+    $lines = ($searched | Select-Object -Unique | ForEach-Object { "  $_" }) -join [Environment]::NewLine
+    throw (
+        "Could not find Majesty Gold HD." + [Environment]::NewLine +
+        "Looked in:" + [Environment]::NewLine + $lines + [Environment]::NewLine +
+        'Re-run with -GamePath "D:\Path\To\Majesty HD".'
+    )
 }
 
 function Test-BytesEqual {
@@ -122,6 +178,17 @@ function Test-BytesEqual {
 function Write-Bytes {
     param([byte[]]$Bytes, [int]$Offset, [byte[]]$Patch)
 
+    # A null or empty patch means the caller built the wrong thing. PowerShell
+    # evaluates $null.Length to $null, so the loop below would silently write
+    # nothing, leaving a hooked-but-empty code section and a game that jumps
+    # into blank memory. Fail loudly instead of shipping a broken exe.
+    if ($null -eq $Patch -or $Patch.Length -eq 0) {
+        throw ("Write-Bytes received no data for file offset 0x{0:X}. This is an installer bug, not a problem with your game files." -f $Offset)
+    }
+    if ($Offset -lt 0 -or ($Offset + $Patch.Length) -gt $Bytes.Length) {
+        throw ("Write-Bytes range 0x{0:X}..0x{1:X} falls outside the {2}-byte image." -f $Offset, ($Offset + $Patch.Length - 1), $Bytes.Length)
+    }
+
     for ($i = 0; $i -lt $Patch.Length; $i++) {
         $Bytes[$Offset + $i] = $Patch[$i]
     }
@@ -134,7 +201,8 @@ function Assert-FileWritable {
     try {
         $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     } catch {
-        throw "Cannot patch MajestyHD.exe because it is in use or not writable. Close Majesty Gold HD and run this restore again. If the game is closed, right-click the BAT and choose Run as administrator."
+        $name = Split-Path -Leaf $Path
+        throw "Cannot modify $name because it is in use or not writable. Close Majesty Gold HD and try again. If the game is already closed, right-click the BAT and choose Run as administrator."
     } finally {
         if ($null -ne $stream) {
             $stream.Dispose()
@@ -151,19 +219,11 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
 
-$currentSectionCount = [BitConverter]::ToUInt16($bytes, $NumberOfSectionsOffset)
-$currentSizeOfImage = [BitConverter]::ToUInt32($bytes, $SizeOfImageOffset)
-$headerIsPatched = Test-BytesEqual $bytes $NewSectionHeaderOffset $PatchSectionHeader
-$sectionsArePatched = $headerIsPatched -and $currentSectionCount -ge 5
-$sectionsAreStock = Test-BytesEqual $bytes $NumberOfSectionsOffset $OriginalNumberOfSections
-$imageIsPatched = $headerIsPatched -and $currentSizeOfImage -ge 0x410000
-$imageIsStock = Test-BytesEqual $bytes $SizeOfImageOffset $OriginalSizeOfImage
-$loadIsPatched = Test-BytesEqual $bytes $LoadCallOffset $PatchedLoadCall
-$loadIsStock = Test-BytesEqual $bytes $LoadCallOffset $OriginalLoadCall
-$saveIsPatched = Test-BytesEqual $bytes $SaveCallOffset $PatchedSaveCall
-$saveIsStock = Test-BytesEqual $bytes $SaveCallOffset $OriginalSaveCall
+$pe = Get-PeInfo $bytes
+$section = $pe.Sections | Where-Object { $_.Name -eq $SectionName } | Select-Object -First 1
 
-$isInstalled = $sectionsArePatched -or $imageIsPatched -or $headerIsPatched -or $saveIsPatched -or $loadIsPatched
+$loadIsStock = Test-BytesEqual $bytes $LoadCallOffset $OriginalLoadCall
+$saveIsStock = Test-BytesEqual $bytes $SaveCallOffset $OriginalSaveCall
 
 Write-Host "Majesty Gold HD Mod Persistence restore"
 Write-Host "Game path: $resolvedGamePath"
@@ -172,19 +232,31 @@ if ($DryRun) {
 }
 Write-Host ""
 
-if (-not $isInstalled) {
-    if ($sectionsAreStock -and $imageIsStock -and $saveIsStock -and $loadIsStock) {
+if (-not $section) {
+    if ($saveIsStock -and $loadIsStock) {
         Write-Host "MajestyHD.exe: mod persistence is not installed."
         return
     }
     throw "MajestyHD.exe does not match the expected installed or stock mod persistence bytes."
 }
 
-if (-not ($sectionsArePatched -and $imageIsPatched -and $headerIsPatched -and $saveIsPatched -and $loadIsPatched)) {
+$patchSectionVa = [uint32]($pe.ImageBase + $section.Rva)
+[byte[]]$PatchedSaveCall = New-RelativeCallBytes $SaveCallVa $patchSectionVa
+[byte[]]$PatchedLoadCall = New-RelativeCallBytes $LoadCallVa ($patchSectionVa + 0x300)
+$loadIsPatched = Test-BytesEqual $bytes $LoadCallOffset $PatchedLoadCall
+$saveIsPatched = Test-BytesEqual $bytes $SaveCallOffset $PatchedSaveCall
+
+if (-not ($saveIsPatched -and $loadIsPatched)) {
     throw "MajestyHD.exe has only part of the mod persistence section patch. Refusing to restore automatically."
 }
 
-$sectionIsLast = $currentSectionCount -eq 5 -and $bytes.Length -eq $PatchedFileSize
+$sectionIsLast = ($section.Index -eq ($pe.SectionCount - 1)) -and
+                 ($bytes.Length -eq ($section.RawOffset + $PatchRawSize))
+
+if ($sectionIsLast) {
+    $previousSection = $pe.Sections | Where-Object { $_.Index -eq ($section.Index - 1) } | Select-Object -First 1
+    $restoredSizeOfImage = Align-Value ([uint32]($previousSection.Rva + [Math]::Max($previousSection.VirtualSize, $previousSection.RawSize))) ([uint32]$pe.SectionAlignment)
+}
 
 if ($DryRun) {
     Write-Host ("MajestyHD.exe: would restore mod-save hook at file offset 0x{0:X}." -f $SaveCallOffset)
@@ -192,8 +264,8 @@ if ($DryRun) {
         Write-Host ("MajestyHD.exe: would restore mod-load hook at file offset 0x{0:X}." -f $LoadCallOffset)
     }
     if ($sectionIsLast) {
-        Write-Host ("MajestyHD.exe: would remove .mpst section header at file offset 0x{0:X}." -f $NewSectionHeaderOffset)
-        Write-Host ("MajestyHD.exe: would truncate appended .mpst data back to file offset 0x{0:X}." -f $PatchSectionRawOffset)
+        Write-Host ("MajestyHD.exe: would remove .mpst section header at file offset 0x{0:X}." -f $section.HeaderOffset)
+        Write-Host ("MajestyHD.exe: would truncate appended .mpst data back to file offset 0x{0:X}." -f $section.RawOffset)
     } else {
         Write-Host "MajestyHD.exe: would leave the now-inert .mpst section in place because later patch sections depend on the current PE layout."
     }
@@ -202,16 +274,16 @@ if ($DryRun) {
 
 Assert-FileWritable $exePath
 
-$restoredLength = if ($sectionIsLast) { $PatchSectionRawOffset } else { $bytes.Length }
+$restoredLength = if ($sectionIsLast) { [int]$section.RawOffset } else { $bytes.Length }
 $restoredBytes = New-Object byte[] $restoredLength
 [Array]::Copy($bytes, 0, $restoredBytes, 0, $restoredLength)
 
 if ($sectionIsLast) {
-    Write-Bytes $restoredBytes $NumberOfSectionsOffset $OriginalNumberOfSections
-    Write-Bytes $restoredBytes $SizeOfImageOffset $OriginalSizeOfImage
-    Write-Bytes $restoredBytes $NewSectionHeaderOffset (New-Object byte[] 40)
+    [BitConverter]::GetBytes([uint16]($pe.SectionCount - 1)).CopyTo($restoredBytes, $pe.SectionCountOffset)
+    [BitConverter]::GetBytes([uint32]$restoredSizeOfImage).CopyTo($restoredBytes, $pe.SizeOfImageOffset)
+    Write-Bytes $restoredBytes $section.HeaderOffset (New-Object byte[] 40)
 } else {
-    Write-Bytes $restoredBytes $PatchSectionRawOffset (New-Object byte[] $PatchRawSize)
+    Write-Bytes $restoredBytes $section.RawOffset (New-Object byte[] $PatchRawSize)
 }
 Write-Bytes $restoredBytes $SaveCallOffset $OriginalSaveCall
 Write-Bytes $restoredBytes $LoadCallOffset $OriginalLoadCall

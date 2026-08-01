@@ -60,3 +60,19 @@ This patch targets the Steam release of Majesty Gold HD tested during this
 project. If Steam updates `MajestyHD.exe`, run the installer again. The installer
 checks the bytes it plans to patch and stops if the executable is not in a known
 stock or already-patched state.
+
+## If you ever need a clean executable
+
+These utilities uninstall by reversing their own byte changes, so you do not
+need a backup copy to remove them. The `_*_originals` folder each installer
+creates is only a convenience snapshot of whatever was on disk beforehand, which
+may already include other patches. It is not a stock game file.
+
+For a guaranteed unmodified executable, let Steam do it:
+
+1. Right-click **Majesty Gold HD** in your Steam library
+2. **Properties** > **Installed Files**
+3. **Verify integrity of game files**
+
+Steam will replace `MajestyHD.exe` with the original. You can then reinstall
+whichever utilities you want.

@@ -37,3 +37,19 @@ with a path:
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\scripts\Install-QuestMapDragPan.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Majesty HD"
 ```
+
+## If you ever need a clean executable
+
+These utilities uninstall by reversing their own byte changes, so you do not
+need a backup copy to remove them. The `_*_originals` folder each installer
+creates is only a convenience snapshot of whatever was on disk beforehand, which
+may already include other patches. It is not a stock game file.
+
+For a guaranteed unmodified executable, let Steam do it:
+
+1. Right-click **Majesty Gold HD** in your Steam library
+2. **Properties** > **Installed Files**
+3. **Verify integrity of game files**
+
+Steam will replace `MajestyHD.exe` with the original. You can then reinstall
+whichever utilities you want.

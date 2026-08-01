@@ -8,6 +8,9 @@ $ErrorActionPreference = "Stop"
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_remember_game_speed_originals"
 
+# PE section characteristics: code, execute, read, write. The section holds runtime scratch state.
+$SectionCharacteristics = 3758096416  # 0xE0000020: code, execute, read, write
+
 $PatchSectionName = ".mskp"
 $PatchRawSize = 0x1000
 $PatchVirtualSize = 0x800
@@ -62,6 +65,48 @@ function Read-U32 {
     return [BitConverter]::ToUInt32($Bytes, $Offset)
 }
 
+function Save-PreInstallBackup {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$BackupDir,
+        [Parameter(Mandatory = $true)][string]$BackupPath,
+        [Parameter(Mandatory = $true)][string]$UtilityName
+    )
+
+    if (-not (Test-Path -LiteralPath $BackupDir)) {
+        New-Item -ItemType Directory -Path $BackupDir | Out-Null
+    }
+    if (Test-Path -LiteralPath $BackupPath) {
+        return
+    }
+
+    Copy-Item -LiteralPath $SourcePath -Destination $BackupPath
+
+    # Say plainly what this copy is. It is NOT a stock game file, and the
+    # uninstaller never reads it: uninstalling reverses this utility's own byte
+    # changes. Without this note the filename alone implies otherwise.
+    $leaf = Split-Path -Leaf $BackupPath
+    $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $note = @"
+$leaf
+
+A copy of MajestyHD.exe taken immediately before $UtilityName was first
+installed, on $stamp.
+
+This is NOT guaranteed to be an unmodified Majesty Gold HD executable. It is
+whatever was on disk at that moment, which may already include other patches
+you had installed.
+
+You do not need this file to uninstall. The uninstaller reverses its own byte
+changes and never reads this copy. It is kept only as a convenience snapshot.
+
+For a guaranteed clean executable, use Steam instead:
+  Right-click Majesty Gold HD > Properties > Installed Files >
+  Verify integrity of game files
+"@
+    Set-Content -LiteralPath (Join-Path $BackupDir "READ ME - what this file is.txt") -Value $note -Encoding ASCII
+}
+
 function Align-Value {
     param([uint32]$Value, [uint32]$Alignment)
     return [uint32](([uint64]([Math]::Ceiling([double]$Value / [double]$Alignment))) * [uint64]$Alignment)
@@ -75,18 +120,12 @@ function Get-PeInfo {
     $sectionCount = Read-U16 $Bytes $sectionCountOffset
     $optionalHeaderSize = Read-U16 $Bytes ($peOffset + 20)
     $optionalHeaderOffset = $peOffset + 24
-    $imageBase = Read-U32 $Bytes ($optionalHeaderOffset + 28)
-    $sectionAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 32)
-    $fileAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 36)
-    $sizeOfImageOffset = $optionalHeaderOffset + 56
-    $sizeOfHeaders = Read-U32 $Bytes ($optionalHeaderOffset + 60)
     $sectionTableOffset = $optionalHeaderOffset + $optionalHeaderSize
 
     $sections = @()
     for ($i = 0; $i -lt $sectionCount; $i++) {
         $off = $sectionTableOffset + ($i * 40)
-        $nameBytes = $Bytes[$off..($off + 7)]
-        $name = [Text.Encoding]::ASCII.GetString($nameBytes).TrimEnd([char]0)
+        $name = [Text.Encoding]::ASCII.GetString($Bytes[$off..($off + 7)]).TrimEnd([char]0)
         $sections += [pscustomobject]@{
             Index = $i
             HeaderOffset = $off
@@ -101,12 +140,12 @@ function Get-PeInfo {
     return [pscustomobject]@{
         SectionCountOffset = $sectionCountOffset
         SectionCount = $sectionCount
-        ImageBase = $imageBase
-        SectionAlignment = $sectionAlignment
-        FileAlignment = $fileAlignment
-        SizeOfImageOffset = $sizeOfImageOffset
-        SizeOfImage = Read-U32 $Bytes $sizeOfImageOffset
-        SizeOfHeaders = $sizeOfHeaders
+        ImageBase = Read-U32 $Bytes ($optionalHeaderOffset + 28)
+        SectionAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 32)
+        FileAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 36)
+        SizeOfImageOffset = $optionalHeaderOffset + 56
+        SizeOfImage = Read-U32 $Bytes ($optionalHeaderOffset + 56)
+        SizeOfHeaders = Read-U32 $Bytes ($optionalHeaderOffset + 60)
         SectionTableOffset = $sectionTableOffset
         Sections = $sections
     }
@@ -147,7 +186,7 @@ function New-SectionHeader {
     [BitConverter]::GetBytes($Rva).CopyTo($bytes, 12)
     [BitConverter]::GetBytes($RawSize).CopyTo($bytes, 16)
     [BitConverter]::GetBytes($RawOffset).CopyTo($bytes, 20)
-    [BitConverter]::GetBytes([uint32]3758096416).CopyTo($bytes, 36)
+    [BitConverter]::GetBytes([uint32]$SectionCharacteristics).CopyTo($bytes, 36)
     return $bytes
 }
 
@@ -181,6 +220,17 @@ function Test-ZeroRange {
 
 function Write-Bytes {
     param([byte[]]$Bytes, [int]$Offset, [byte[]]$Patch)
+
+    # A null or empty patch means the caller built the wrong thing. PowerShell
+    # evaluates $null.Length to $null, so the loop below would silently write
+    # nothing, leaving a hooked-but-empty code section and a game that jumps
+    # into blank memory. Fail loudly instead of shipping a broken exe.
+    if ($null -eq $Patch -or $Patch.Length -eq 0) {
+        throw ("Write-Bytes received no data for file offset 0x{0:X}. This is an installer bug, not a problem with your game files." -f $Offset)
+    }
+    if ($Offset -lt 0 -or ($Offset + $Patch.Length) -gt $Bytes.Length) {
+        throw ("Write-Bytes range 0x{0:X}..0x{1:X} falls outside the {2}-byte image." -f $Offset, ($Offset + $Patch.Length - 1), $Bytes.Length)
+    }
 
     for ($i = 0; $i -lt $Patch.Length; $i++) {
         $Bytes[$Offset + $i] = $Patch[$i]
@@ -465,7 +515,74 @@ function Get-MajestyPath {
     if (Test-Path -LiteralPath $DefaultGamePath) {
         return $DefaultGamePath
     }
-    throw "Could not find Majesty HD. Re-run with -GamePath ""C:\Path\To\Majesty HD""."
+
+    # Majesty Gold HD is Steam app 73230.
+    $appId = 73230
+    $searched = New-Object System.Collections.Generic.List[string]
+    $searched.Add($DefaultGamePath)
+
+    # Steam install roots from the registry.
+    $steamRoots = New-Object System.Collections.Generic.List[string]
+    foreach ($key in @(
+        "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam",
+        "HKLM:\SOFTWARE\Valve\Steam",
+        "HKCU:\SOFTWARE\Valve\Steam"
+    )) {
+        try {
+            $installPath = (Get-ItemProperty -LiteralPath $key -ErrorAction Stop).InstallPath
+            if ($installPath) {
+                $steamRoots.Add($installPath)
+            }
+        } catch {
+        }
+    }
+
+    # Every Steam library, including the install roots themselves. A second
+    # drive is the common case this exists for.
+    $libraryRoots = New-Object System.Collections.Generic.List[string]
+    foreach ($steamRoot in $steamRoots) {
+        $libraryRoots.Add($steamRoot)
+        $libraryFile = Join-Path $steamRoot "steamapps\libraryfolders.vdf"
+        if (-not (Test-Path -LiteralPath $libraryFile)) {
+            continue
+        }
+        foreach ($line in Get-Content -LiteralPath $libraryFile) {
+            if ($line -match '"path"\s+"([^"]+)"') {
+                $libraryRoots.Add(($Matches[1] -replace '\\\\', '\'))
+            }
+        }
+    }
+
+    foreach ($libraryRoot in ($libraryRoots | Select-Object -Unique)) {
+        $candidate = Join-Path $libraryRoot "steamapps\common\Majesty HD"
+        $searched.Add($candidate)
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+
+        # The install folder can be named something else. Ask Steam's own
+        # manifest rather than assuming.
+        $manifest = Join-Path $libraryRoot ("steamapps\appmanifest_" + $appId + ".acf")
+        if (-not (Test-Path -LiteralPath $manifest)) {
+            continue
+        }
+        foreach ($line in Get-Content -LiteralPath $manifest) {
+            if ($line -match '"installdir"\s+"([^"]+)"') {
+                $named = Join-Path $libraryRoot ("steamapps\common\" + ($Matches[1] -replace '\\\\', '\'))
+                $searched.Add($named)
+                if (Test-Path -LiteralPath $named) {
+                    return $named
+                }
+            }
+        }
+    }
+
+    $lines = ($searched | Select-Object -Unique | ForEach-Object { "  $_" }) -join [Environment]::NewLine
+    throw (
+        "Could not find Majesty Gold HD." + [Environment]::NewLine +
+        "Looked in:" + [Environment]::NewLine + $lines + [Environment]::NewLine +
+        'Re-run with -GamePath "D:\Path\To\Majesty HD".'
+    )
 }
 
 function Assert-FileWritable {
@@ -475,7 +592,8 @@ function Assert-FileWritable {
     try {
         $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     } catch {
-        throw "Cannot patch MajestyHD.exe because it is in use or not writable. Close Majesty Gold HD and run this installer again. If the game is closed, right-click the BAT and choose Run as administrator."
+        $name = Split-Path -Leaf $Path
+        throw "Cannot modify $name because it is in use or not writable. Close Majesty Gold HD and try again. If the game is already closed, right-click the BAT and choose Run as administrator."
     } finally {
         if ($null -ne $stream) {
             $stream.Dispose()
@@ -582,16 +700,39 @@ $objectInitTwoIsStock = Test-BytesEqual $bytes $SpeedObjectInitTwoOffset $Origin
 $objectInitTwoAlreadyPatched = Test-BytesEqual $bytes $SpeedObjectInitTwoOffset $newObjectInitTwoHook
 $objectInitThreeIsStock = Test-BytesEqual $bytes $SpeedObjectInitThreeOffset $OriginalSpeedWriteEsiObjectBytes
 $objectInitThreeAlreadyPatched = Test-BytesEqual $bytes $SpeedObjectInitThreeOffset $newObjectInitThreeHook
+
+# The Speedrun Timer hooks these same two sites directly when it is installed
+# without us. Recognise its hooks as a valid prior state and take the sites
+# over: our blocks replay the displaced instruction and then hand control to
+# the timer through the bridge below, which is exactly the layout produced by
+# installing in the opposite order. The timer's now-unused direct stubs stay
+# in its own section and are harmless.
+$speedrunSection = $pe.Sections | Where-Object { $_.Name -eq ".msrt" } | Select-Object -First 1
+$speedrunDirectHookTwo = $null
+$speedrunDirectHookThree = $null
+$objectInitTwoIsSpeedrunDirect = $false
+$objectInitThreeIsSpeedrunDirect = $false
+if ($speedrunSection) {
+    $speedrunSectionVa = [uint32]($pe.ImageBase + $speedrunSection.Rva)
+    $speedrunDirectHookTwo = (New-RelativeJumpBytes $SpeedObjectInitTwoVa ([uint32]($speedrunSectionVa + 0x140))) + [byte[]]@(0x90)
+    $speedrunDirectHookThree = (New-RelativeJumpBytes $SpeedObjectInitThreeVa ([uint32]($speedrunSectionVa + 0x160))) + [byte[]]@(0x90)
+    $objectInitTwoIsSpeedrunDirect = Test-BytesEqual $bytes $SpeedObjectInitTwoOffset $speedrunDirectHookTwo
+    $objectInitThreeIsSpeedrunDirect = Test-BytesEqual $bytes $SpeedObjectInitThreeOffset $speedrunDirectHookThree
+}
 $optionsSaveOldPatched = Test-BytesEqual $bytes $OldOptionsSaveOffset $oldOptionsSaveHook
 $optionsSaveIsStock = Test-BytesEqual $bytes $OldOptionsSaveOffset $OriginalOptionsSaveBytes
 $optionsRestoreOldPatched = Test-BytesEqual $bytes $OldOptionsRestoreOffset $oldOptionsRestoreHook
 $optionsRestoreIsStock = Test-BytesEqual $bytes $OldOptionsRestoreOffset $OriginalOptionsRestoreBytes
 $headerAlreadyPatched = $existingSection -and (Test-BytesEqual $bytes $patchSectionHeaderOffset $patchSectionHeader)
 $blobAlreadyPatched = $existingSection -and (Test-BytesEqual $bytes $patchSectionRawOffset $patchBlob)
-$speedrunSection = $pe.Sections | Where-Object { $_.Name -eq ".msrt" } | Select-Object -First 1
 $speedrunBlob = $null
 $blobHasSpeedrunBridges = $false
-if ($existingSection -and $speedrunSection) {
+# Build the Speedrun Timer bridge whenever the timer is present. This used to
+# also require $existingSection, which meant a first-time install onto a game
+# that already had the timer left $speedrunBlob null. $blobToWrite below then
+# selected that null, and the byte writer silently wrote nothing, producing a
+# zeroed .mskp section with ten live hooks pointing into it.
+if ($speedrunSection) {
     $speedrunVa = [uint32]($pe.ImageBase + $speedrunSection.Rva)
     $speedrunBlob = New-Object byte[] $PatchRawSize
     [Array]::Copy($patchBlob, $speedrunBlob, $PatchRawSize)
@@ -629,10 +770,10 @@ if (-not ($copyTwoIsStock -or $copyTwoAlreadyPatched)) {
 if (-not ($objectInitOneIsStock -or $objectInitOneAlreadyPatched)) {
     throw ("MajestyHD.exe has unexpected bytes at game-speed object hook 0x{0:X}." -f $SpeedObjectInitOneOffset)
 }
-if (-not ($objectInitTwoIsStock -or $objectInitTwoAlreadyPatched)) {
+if (-not ($objectInitTwoIsStock -or $objectInitTwoAlreadyPatched -or $objectInitTwoIsSpeedrunDirect)) {
     throw ("MajestyHD.exe has unexpected bytes at game-speed object hook 0x{0:X}." -f $SpeedObjectInitTwoOffset)
 }
-if (-not ($objectInitThreeIsStock -or $objectInitThreeAlreadyPatched)) {
+if (-not ($objectInitThreeIsStock -or $objectInitThreeAlreadyPatched -or $objectInitThreeIsSpeedrunDirect)) {
     throw ("MajestyHD.exe has unexpected bytes at game-speed object hook 0x{0:X}." -f $SpeedObjectInitThreeOffset)
 }
 if (-not ($optionsSaveIsStock -or $optionsSaveOldPatched)) {
@@ -718,12 +859,7 @@ if (
     Copy-Item -LiteralPath $legacyPreferencePath -Destination $preferencePath
 }
 
-if (-not (Test-Path -LiteralPath $backupDir)) {
-    New-Item -ItemType Directory -Path $backupDir | Out-Null
-}
-if (-not (Test-Path -LiteralPath $backupPath)) {
-    Copy-Item -LiteralPath $exePath -Destination $backupPath
-}
+Save-PreInstallBackup $exePath $backupDir $backupPath "Remember Game Speed"
 
 $targetFileSize = if ($existingSection) { $bytes.Length } else { $patchedFileSize }
 $patchedBytes = New-Object byte[] $targetFileSize

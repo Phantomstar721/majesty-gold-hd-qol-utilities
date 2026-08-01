@@ -13,7 +13,8 @@ restores it for new quests, saved games, and future Majesty launches.
 3. Start Majesty Gold HD.
 4. Start a quest and use the camera zoom button once.
 
-After that, Majesty writes `MajestyCameraZoom.bin` in its install folder and
+After that, Majesty writes `MajestyCameraZoom.bin` under
+`%LOCALAPPDATA%\MajestyHD` and
 uses that saved zoom level when quests load.
 
 If Windows blocks the patch because the game is under `Program Files`,
@@ -27,10 +28,11 @@ Close Majesty Gold HD, then double-click:
 Uninstall - Restore Stock Camera Zoom.bat
 ```
 
-The saved `MajestyCameraZoom.bin` file is left in the game folder. It is
+The saved `%LOCALAPPDATA%\MajestyHD\MajestyCameraZoom.bin` file is left in
+place. It is
 harmless, and keeping it means your zoom setting is still there if you reinstall.
 
-To reset the remembered zoom, delete `MajestyCameraZoom.bin` from the Majesty
+To reset the remembered zoom, delete `%LOCALAPPDATA%\MajestyHD\MajestyCameraZoom.bin` from the Majesty
 install folder or use the zoom button again after reinstalling the patch.
 
 ## What It Changes
@@ -51,3 +53,19 @@ checks the bytes it plans to patch and stops if the executable is not in a known
 stock or already-patched state.
 
 The repo does not contain Majesty game assets or game files.
+
+## If you ever need a clean executable
+
+These utilities uninstall by reversing their own byte changes, so you do not
+need a backup copy to remove them. The `_*_originals` folder each installer
+creates is only a convenience snapshot of whatever was on disk beforehand, which
+may already include other patches. It is not a stock game file.
+
+For a guaranteed unmodified executable, let Steam do it:
+
+1. Right-click **Majesty Gold HD** in your Steam library
+2. **Properties** > **Installed Files**
+3. **Verify integrity of game files**
+
+Steam will replace `MajestyHD.exe` with the original. You can then reinstall
+whichever utilities you want.

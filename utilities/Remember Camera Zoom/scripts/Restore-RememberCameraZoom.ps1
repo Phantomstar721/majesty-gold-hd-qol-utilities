@@ -40,15 +40,12 @@ function Get-PeInfo {
     $sectionCount = Read-U16 $Bytes $sectionCountOffset
     $optionalHeaderSize = Read-U16 $Bytes ($peOffset + 20)
     $optionalHeaderOffset = $peOffset + 24
-    $sectionAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 32)
-    $sizeOfImageOffset = $optionalHeaderOffset + 56
     $sectionTableOffset = $optionalHeaderOffset + $optionalHeaderSize
 
     $sections = @()
     for ($i = 0; $i -lt $sectionCount; $i++) {
         $off = $sectionTableOffset + ($i * 40)
-        $nameBytes = $Bytes[$off..($off + 7)]
-        $name = [Text.Encoding]::ASCII.GetString($nameBytes).TrimEnd([char]0)
+        $name = [Text.Encoding]::ASCII.GetString($Bytes[$off..($off + 7)]).TrimEnd([char]0)
         $sections += [pscustomobject]@{
             Index = $i
             HeaderOffset = $off
@@ -63,8 +60,13 @@ function Get-PeInfo {
     return [pscustomobject]@{
         SectionCountOffset = $sectionCountOffset
         SectionCount = $sectionCount
-        SectionAlignment = $sectionAlignment
-        SizeOfImageOffset = $sizeOfImageOffset
+        ImageBase = Read-U32 $Bytes ($optionalHeaderOffset + 28)
+        SectionAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 32)
+        FileAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 36)
+        SizeOfImageOffset = $optionalHeaderOffset + 56
+        SizeOfImage = Read-U32 $Bytes ($optionalHeaderOffset + 56)
+        SizeOfHeaders = Read-U32 $Bytes ($optionalHeaderOffset + 60)
+        SectionTableOffset = $sectionTableOffset
         Sections = $sections
     }
 }
@@ -96,6 +98,17 @@ function Test-BytesEqual {
 function Write-Bytes {
     param([byte[]]$Bytes, [int]$Offset, [byte[]]$Patch)
 
+    # A null or empty patch means the caller built the wrong thing. PowerShell
+    # evaluates $null.Length to $null, so the loop below would silently write
+    # nothing, leaving a hooked-but-empty code section and a game that jumps
+    # into blank memory. Fail loudly instead of shipping a broken exe.
+    if ($null -eq $Patch -or $Patch.Length -eq 0) {
+        throw ("Write-Bytes received no data for file offset 0x{0:X}. This is an installer bug, not a problem with your game files." -f $Offset)
+    }
+    if ($Offset -lt 0 -or ($Offset + $Patch.Length) -gt $Bytes.Length) {
+        throw ("Write-Bytes range 0x{0:X}..0x{1:X} falls outside the {2}-byte image." -f $Offset, ($Offset + $Patch.Length - 1), $Bytes.Length)
+    }
+
     for ($i = 0; $i -lt $Patch.Length; $i++) {
         $Bytes[$Offset + $i] = $Patch[$i]
     }
@@ -110,7 +123,74 @@ function Get-MajestyPath {
     if (Test-Path -LiteralPath $DefaultGamePath) {
         return $DefaultGamePath
     }
-    throw "Could not find Majesty HD. Re-run with -GamePath ""C:\Path\To\Majesty HD""."
+
+    # Majesty Gold HD is Steam app 73230.
+    $appId = 73230
+    $searched = New-Object System.Collections.Generic.List[string]
+    $searched.Add($DefaultGamePath)
+
+    # Steam install roots from the registry.
+    $steamRoots = New-Object System.Collections.Generic.List[string]
+    foreach ($key in @(
+        "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam",
+        "HKLM:\SOFTWARE\Valve\Steam",
+        "HKCU:\SOFTWARE\Valve\Steam"
+    )) {
+        try {
+            $installPath = (Get-ItemProperty -LiteralPath $key -ErrorAction Stop).InstallPath
+            if ($installPath) {
+                $steamRoots.Add($installPath)
+            }
+        } catch {
+        }
+    }
+
+    # Every Steam library, including the install roots themselves. A second
+    # drive is the common case this exists for.
+    $libraryRoots = New-Object System.Collections.Generic.List[string]
+    foreach ($steamRoot in $steamRoots) {
+        $libraryRoots.Add($steamRoot)
+        $libraryFile = Join-Path $steamRoot "steamapps\libraryfolders.vdf"
+        if (-not (Test-Path -LiteralPath $libraryFile)) {
+            continue
+        }
+        foreach ($line in Get-Content -LiteralPath $libraryFile) {
+            if ($line -match '"path"\s+"([^"]+)"') {
+                $libraryRoots.Add(($Matches[1] -replace '\\\\', '\'))
+            }
+        }
+    }
+
+    foreach ($libraryRoot in ($libraryRoots | Select-Object -Unique)) {
+        $candidate = Join-Path $libraryRoot "steamapps\common\Majesty HD"
+        $searched.Add($candidate)
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+
+        # The install folder can be named something else. Ask Steam's own
+        # manifest rather than assuming.
+        $manifest = Join-Path $libraryRoot ("steamapps\appmanifest_" + $appId + ".acf")
+        if (-not (Test-Path -LiteralPath $manifest)) {
+            continue
+        }
+        foreach ($line in Get-Content -LiteralPath $manifest) {
+            if ($line -match '"installdir"\s+"([^"]+)"') {
+                $named = Join-Path $libraryRoot ("steamapps\common\" + ($Matches[1] -replace '\\\\', '\'))
+                $searched.Add($named)
+                if (Test-Path -LiteralPath $named) {
+                    return $named
+                }
+            }
+        }
+    }
+
+    $lines = ($searched | Select-Object -Unique | ForEach-Object { "  $_" }) -join [Environment]::NewLine
+    throw (
+        "Could not find Majesty Gold HD." + [Environment]::NewLine +
+        "Looked in:" + [Environment]::NewLine + $lines + [Environment]::NewLine +
+        'Re-run with -GamePath "D:\Path\To\Majesty HD".'
+    )
 }
 
 function Assert-FileWritable {
@@ -120,7 +200,8 @@ function Assert-FileWritable {
     try {
         $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     } catch {
-        throw "Cannot patch MajestyHD.exe because it is in use or not writable. Close Majesty Gold HD and run this restore again. If the game is closed, right-click the BAT and choose Run as administrator."
+        $name = Split-Path -Leaf $Path
+        throw "Cannot modify $name because it is in use or not writable. Close Majesty Gold HD and try again. If the game is already closed, right-click the BAT and choose Run as administrator."
     } finally {
         if ($null -ne $stream) {
             $stream.Dispose()
@@ -165,7 +246,11 @@ if (-not ($constructorIsPatched -or $vtableIsPatched -or $runtimeVtableIsPatched
 }
 
 if ($section.Index -ne ($pe.SectionCount - 1)) {
-    throw ".mczp is not the last PE section. Refusing to remove it automatically."
+    throw ".mczp is not the last section added to MajestyHD.exe, so removing it would break the patches that came after it.
+
+Uninstall in reverse order: whichever utility you installed last must be removed first. Across these tools the section order is .mpst (Remember Active Mods), .mskp (Remember Game Speed), .mczp (Remember Camera Zoom), .msrt (Speedrun Timer) - but only the ones you actually installed will be present.
+
+Run the uninstallers for any utility listed after this one, then run this one again."
 }
 
 $previousSection = $pe.Sections | Where-Object { $_.Index -eq ($section.Index - 1) } | Select-Object -First 1

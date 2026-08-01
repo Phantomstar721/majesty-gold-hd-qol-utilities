@@ -8,6 +8,9 @@ $ErrorActionPreference = "Stop"
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_remember_camera_zoom_originals"
 
+# PE section characteristics: code, execute, read, write. The section holds runtime scratch state.
+$SectionCharacteristics = 3758096416  # 0xE0000020: code, execute, read, write
+
 $PatchSectionName = ".mczp"
 $PatchRawSize = 0x1000
 $PatchVirtualSize = 0x800
@@ -39,6 +42,48 @@ function Read-U32 {
     return [BitConverter]::ToUInt32($Bytes, $Offset)
 }
 
+function Save-PreInstallBackup {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$BackupDir,
+        [Parameter(Mandatory = $true)][string]$BackupPath,
+        [Parameter(Mandatory = $true)][string]$UtilityName
+    )
+
+    if (-not (Test-Path -LiteralPath $BackupDir)) {
+        New-Item -ItemType Directory -Path $BackupDir | Out-Null
+    }
+    if (Test-Path -LiteralPath $BackupPath) {
+        return
+    }
+
+    Copy-Item -LiteralPath $SourcePath -Destination $BackupPath
+
+    # Say plainly what this copy is. It is NOT a stock game file, and the
+    # uninstaller never reads it: uninstalling reverses this utility's own byte
+    # changes. Without this note the filename alone implies otherwise.
+    $leaf = Split-Path -Leaf $BackupPath
+    $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $note = @"
+$leaf
+
+A copy of MajestyHD.exe taken immediately before $UtilityName was first
+installed, on $stamp.
+
+This is NOT guaranteed to be an unmodified Majesty Gold HD executable. It is
+whatever was on disk at that moment, which may already include other patches
+you had installed.
+
+You do not need this file to uninstall. The uninstaller reverses its own byte
+changes and never reads this copy. It is kept only as a convenience snapshot.
+
+For a guaranteed clean executable, use Steam instead:
+  Right-click Majesty Gold HD > Properties > Installed Files >
+  Verify integrity of game files
+"@
+    Set-Content -LiteralPath (Join-Path $BackupDir "READ ME - what this file is.txt") -Value $note -Encoding ASCII
+}
+
 function Align-Value {
     param([uint32]$Value, [uint32]$Alignment)
     return [uint32](([uint64]([Math]::Ceiling([double]$Value / [double]$Alignment))) * [uint64]$Alignment)
@@ -52,18 +97,12 @@ function Get-PeInfo {
     $sectionCount = Read-U16 $Bytes $sectionCountOffset
     $optionalHeaderSize = Read-U16 $Bytes ($peOffset + 20)
     $optionalHeaderOffset = $peOffset + 24
-    $imageBase = Read-U32 $Bytes ($optionalHeaderOffset + 28)
-    $sectionAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 32)
-    $fileAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 36)
-    $sizeOfImageOffset = $optionalHeaderOffset + 56
-    $sizeOfHeaders = Read-U32 $Bytes ($optionalHeaderOffset + 60)
     $sectionTableOffset = $optionalHeaderOffset + $optionalHeaderSize
 
     $sections = @()
     for ($i = 0; $i -lt $sectionCount; $i++) {
         $off = $sectionTableOffset + ($i * 40)
-        $nameBytes = $Bytes[$off..($off + 7)]
-        $name = [Text.Encoding]::ASCII.GetString($nameBytes).TrimEnd([char]0)
+        $name = [Text.Encoding]::ASCII.GetString($Bytes[$off..($off + 7)]).TrimEnd([char]0)
         $sections += [pscustomobject]@{
             Index = $i
             HeaderOffset = $off
@@ -78,12 +117,12 @@ function Get-PeInfo {
     return [pscustomobject]@{
         SectionCountOffset = $sectionCountOffset
         SectionCount = $sectionCount
-        ImageBase = $imageBase
-        SectionAlignment = $sectionAlignment
-        FileAlignment = $fileAlignment
-        SizeOfImageOffset = $sizeOfImageOffset
-        SizeOfImage = Read-U32 $Bytes $sizeOfImageOffset
-        SizeOfHeaders = $sizeOfHeaders
+        ImageBase = Read-U32 $Bytes ($optionalHeaderOffset + 28)
+        SectionAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 32)
+        FileAlignment = Read-U32 $Bytes ($optionalHeaderOffset + 36)
+        SizeOfImageOffset = $optionalHeaderOffset + 56
+        SizeOfImage = Read-U32 $Bytes ($optionalHeaderOffset + 56)
+        SizeOfHeaders = Read-U32 $Bytes ($optionalHeaderOffset + 60)
         SectionTableOffset = $sectionTableOffset
         Sections = $sections
     }
@@ -124,7 +163,7 @@ function New-SectionHeader {
     [BitConverter]::GetBytes($Rva).CopyTo($bytes, 12)
     [BitConverter]::GetBytes($RawSize).CopyTo($bytes, 16)
     [BitConverter]::GetBytes($RawOffset).CopyTo($bytes, 20)
-    [BitConverter]::GetBytes([uint32]3758096416).CopyTo($bytes, 36)
+    [BitConverter]::GetBytes([uint32]$SectionCharacteristics).CopyTo($bytes, 36)
     return $bytes
 }
 
@@ -159,6 +198,17 @@ function Test-ZeroRange {
 function Write-Bytes {
     param([byte[]]$Bytes, [int]$Offset, [byte[]]$Patch)
 
+    # A null or empty patch means the caller built the wrong thing. PowerShell
+    # evaluates $null.Length to $null, so the loop below would silently write
+    # nothing, leaving a hooked-but-empty code section and a game that jumps
+    # into blank memory. Fail loudly instead of shipping a broken exe.
+    if ($null -eq $Patch -or $Patch.Length -eq 0) {
+        throw ("Write-Bytes received no data for file offset 0x{0:X}. This is an installer bug, not a problem with your game files." -f $Offset)
+    }
+    if ($Offset -lt 0 -or ($Offset + $Patch.Length) -gt $Bytes.Length) {
+        throw ("Write-Bytes range 0x{0:X}..0x{1:X} falls outside the {2}-byte image." -f $Offset, ($Offset + $Patch.Length - 1), $Bytes.Length)
+    }
+
     for ($i = 0; $i -lt $Patch.Length; $i++) {
         $Bytes[$Offset + $i] = $Patch[$i]
     }
@@ -170,15 +220,31 @@ function New-UInt32Bytes {
 }
 
 function New-PatchBlob {
-    param([uint32]$PatchVa)
+    param(
+        [uint32]$PatchVa,
+        [Parameter(Mandatory = $true)][string]$PreferencePath
+    )
 
     $bytes = New-Object byte[] $PatchRawSize
     $saveZoomVa = $PatchVa
     $restoreZoomVa = $PatchVa + 0x100
-    $fileNameVa = $PatchVa + 0x500
+    # The preference path used to be the bare filename "MajestyCameraZoom.bin",
+    # which fopen resolves against the process working directory. For a Steam
+    # launch that is the game folder under Program Files, which a standard user
+    # cannot write, so the setting silently never persisted. Remember Game Speed
+    # already had this fixed; the fix was never carried across.
+    #
+    # An absolute path needs more room than the old 0x40-byte slot at 0x500, so
+    # the string moved to 0x600 where 0x200 bytes are free below the 0x800
+    # virtual size.
+    $fileNameVa = $PatchVa + 0x600
     $wbVa = $PatchVa + 0x540
     $rbVa = $PatchVa + 0x543
     $zoomTempVa = $PatchVa + 0x700
+
+    if ([Text.Encoding]::ASCII.GetByteCount($PreferencePath) -ge 0x100) {
+        throw "The Remember Camera Zoom preference path is too long to embed safely: $PreferencePath"
+    }
 
     function Set-Bytes {
         param([int]$Offset, [byte[]]$Patch)
@@ -275,7 +341,7 @@ function New-PatchBlob {
     (New-RelativeJumpBytes ($restoreZoomVa + 0x56) $ZoomSetterVa).CopyTo($bytes, 0x156)
     (New-RelativeJumpBytes ($restoreZoomVa + 0x5C) $ZoomSetterVa).CopyTo($bytes, 0x15C)
 
-    Set-AsciiZ 0x500 "MajestyCameraZoom.bin"
+    Set-AsciiZ 0x600 $PreferencePath
     Set-AsciiZ 0x540 "wb"
     Set-AsciiZ 0x543 "rb"
 
@@ -291,7 +357,74 @@ function Get-MajestyPath {
     if (Test-Path -LiteralPath $DefaultGamePath) {
         return $DefaultGamePath
     }
-    throw "Could not find Majesty HD. Re-run with -GamePath ""C:\Path\To\Majesty HD""."
+
+    # Majesty Gold HD is Steam app 73230.
+    $appId = 73230
+    $searched = New-Object System.Collections.Generic.List[string]
+    $searched.Add($DefaultGamePath)
+
+    # Steam install roots from the registry.
+    $steamRoots = New-Object System.Collections.Generic.List[string]
+    foreach ($key in @(
+        "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam",
+        "HKLM:\SOFTWARE\Valve\Steam",
+        "HKCU:\SOFTWARE\Valve\Steam"
+    )) {
+        try {
+            $installPath = (Get-ItemProperty -LiteralPath $key -ErrorAction Stop).InstallPath
+            if ($installPath) {
+                $steamRoots.Add($installPath)
+            }
+        } catch {
+        }
+    }
+
+    # Every Steam library, including the install roots themselves. A second
+    # drive is the common case this exists for.
+    $libraryRoots = New-Object System.Collections.Generic.List[string]
+    foreach ($steamRoot in $steamRoots) {
+        $libraryRoots.Add($steamRoot)
+        $libraryFile = Join-Path $steamRoot "steamapps\libraryfolders.vdf"
+        if (-not (Test-Path -LiteralPath $libraryFile)) {
+            continue
+        }
+        foreach ($line in Get-Content -LiteralPath $libraryFile) {
+            if ($line -match '"path"\s+"([^"]+)"') {
+                $libraryRoots.Add(($Matches[1] -replace '\\\\', '\'))
+            }
+        }
+    }
+
+    foreach ($libraryRoot in ($libraryRoots | Select-Object -Unique)) {
+        $candidate = Join-Path $libraryRoot "steamapps\common\Majesty HD"
+        $searched.Add($candidate)
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+
+        # The install folder can be named something else. Ask Steam's own
+        # manifest rather than assuming.
+        $manifest = Join-Path $libraryRoot ("steamapps\appmanifest_" + $appId + ".acf")
+        if (-not (Test-Path -LiteralPath $manifest)) {
+            continue
+        }
+        foreach ($line in Get-Content -LiteralPath $manifest) {
+            if ($line -match '"installdir"\s+"([^"]+)"') {
+                $named = Join-Path $libraryRoot ("steamapps\common\" + ($Matches[1] -replace '\\\\', '\'))
+                $searched.Add($named)
+                if (Test-Path -LiteralPath $named) {
+                    return $named
+                }
+            }
+        }
+    }
+
+    $lines = ($searched | Select-Object -Unique | ForEach-Object { "  $_" }) -join [Environment]::NewLine
+    throw (
+        "Could not find Majesty Gold HD." + [Environment]::NewLine +
+        "Looked in:" + [Environment]::NewLine + $lines + [Environment]::NewLine +
+        'Re-run with -GamePath "D:\Path\To\Majesty HD".'
+    )
 }
 
 function Assert-FileWritable {
@@ -301,7 +434,8 @@ function Assert-FileWritable {
     try {
         $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     } catch {
-        throw "Cannot patch MajestyHD.exe because it is in use or not writable. Close Majesty Gold HD and run this installer again. If the game is closed, right-click the BAT and choose Run as administrator."
+        $name = Split-Path -Leaf $Path
+        throw "Cannot modify $name because it is in use or not writable. Close Majesty Gold HD and try again. If the game is already closed, right-click the BAT and choose Run as administrator."
     } finally {
         if ($null -ne $stream) {
             $stream.Dispose()
@@ -313,6 +447,11 @@ $resolvedGamePath = Get-MajestyPath $GamePath
 $exePath = Join-Path $resolvedGamePath "MajestyHD.exe"
 $backupDir = Join-Path $resolvedGamePath $BackupDirName
 $backupPath = Join-Path $backupDir "MajestyHD.exe.before-remember-camera-zoom"
+$preferenceDir = Join-Path (
+    [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+) "MajestyHD"
+$preferencePath = Join-Path $preferenceDir "MajestyCameraZoom.bin"
+$legacyPreferencePath = Join-Path $resolvedGamePath "MajestyCameraZoom.bin"
 
 if (-not (Test-Path -LiteralPath $exePath)) {
     throw "Could not find MajestyHD.exe at $exePath."
@@ -350,7 +489,7 @@ if ($existingSection) {
     }
 }
 
-$patchBlob = New-PatchBlob $patchSectionVa
+$patchBlob = New-PatchBlob $patchSectionVa $preferencePath
 $newConstructorHook = New-RelativeCallBytes $ZoomConstructorCallVa ($patchSectionVa + 0x100)
 $newVtableEntry = New-UInt32Bytes $patchSectionVa
 
@@ -380,7 +519,7 @@ $newSizeOfImage = Align-Value ([uint32]($patchSectionRva + $PatchVirtualSize)) (
 
 Write-Host "Majesty Gold HD Remember Camera Zoom installer"
 Write-Host "Game path: $resolvedGamePath"
-Write-Host "Preset file: MajestyCameraZoom.bin"
+Write-Host "Preset file: $preferencePath"
 if ($DryRun) {
     Write-Host "Dry run: no files will be changed."
 }
@@ -412,14 +551,26 @@ if ($DryRun) {
 
 Assert-FileWritable $exePath
 
-if (-not (Test-Path -LiteralPath $backupDir)) {
-    New-Item -ItemType Directory -Path $backupDir | Out-Null
+if (-not (Test-Path -LiteralPath $preferenceDir)) {
+    New-Item -ItemType Directory -Path $preferenceDir | Out-Null
 }
-if (-not (Test-Path -LiteralPath $backupPath)) {
-    Copy-Item -LiteralPath $exePath -Destination $backupPath
+# Carry across a setting saved by an older build that wrote into the game folder.
+if (
+    (-not (Test-Path -LiteralPath $preferencePath)) -and
+    (Test-Path -LiteralPath $legacyPreferencePath)
+) {
+    Copy-Item -LiteralPath $legacyPreferencePath -Destination $preferencePath
 }
 
-$patchedBytes = New-Object byte[] $patchedFileSize
+Save-PreInstallBackup $exePath $backupDir $backupPath "Remember Camera Zoom"
+
+# Keep the file's existing length when updating in place. $patchedFileSize is
+# only where OUR section ends, and another utility's section may sit after it,
+# making the file longer. Sizing the buffer to $patchedFileSize then threw
+# "Destination array was not long enough" on every re-install where .mczp was
+# not the last section.
+$targetFileSize = if ($existingSection) { $bytes.Length } else { $patchedFileSize }
+$patchedBytes = New-Object byte[] $targetFileSize
 [Array]::Copy($bytes, 0, $patchedBytes, 0, $bytes.Length)
 
 if (-not $existingSection) {
