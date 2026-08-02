@@ -11,6 +11,9 @@ Steam version of **Majesty Gold HD**.
   fixed shortcut for downloadable/custom quests.
 - **Quest Map Drag**: adds left-click drag panning while preserving the stock
   quest-map edge-scroll dimensions.
+- **Unlock All Quests**: reveals the game's dormant quest-map cheat control,
+  renames it **UNLOCK ALL QUESTS**, and makes every stock quest selectable for
+  the session. **ERASE VICTORIES** turns it back off.
 - **Remember Active Mods**: saves the in-game **Mods > Active** list and restores it
   automatically on future launches.
 - **Remember Game Speed**: saves the in-quest game-speed slider and restores it for
@@ -93,6 +96,7 @@ left behind by the uninstallers so reinstalling the patch keeps your last zoom.
 - `majesty-gold-hd-skip-intro-videos`
 - `majesty-gold-hd-downloadable-quests-shortcut`
 - `majesty-gold-hd-quest-map-drag`
+- `majesty-gold-hd-unlock-all-quests`
 - `majesty-gold-hd-remember-active-mods`
 - `majesty-gold-hd-remember-game-speed`
 - `majesty-gold-hd-remember-camera-zoom`
@@ -103,7 +107,7 @@ Each utility under `utilities\` is a copy. Its own repository is the source of
 truth, so **edit the utility in its own repo, never here.** Anything changed
 directly in `utilities\` is overwritten the next time the bundle is synced.
 
-The sync expects the six repositories to sit beside this one. Pass
+The sync expects the utility repositories to sit beside this one. Pass
 `-SourceRoot` if they live somewhere else.
 
 Pull the latest copies in:

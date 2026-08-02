@@ -16,7 +16,7 @@
     anything has drifted, so it can gate a release.
 
 .PARAMETER SourceRoot
-    Folder holding the six utility repositories. Defaults to this repository's
+    Folder holding the utility repositories. Defaults to this repository's
     parent, which is the normal side-by-side workspace layout.
 
 .PARAMETER Check
@@ -50,6 +50,7 @@ $UtilityRepos = [ordered]@{
     "Remember Camera Zoom"         = "majesty-gold-hd-remember-camera-zoom"
     "Remember Game Speed"          = "majesty-gold-hd-remember-game-speed"
     "Skip Intro Videos"            = "majesty-gold-hd-skip-intro-videos"
+    "Unlock All Quests"            = "majesty-gold-hd-unlock-all-quests"
 }
 
 # What gets vendored. Everything a user needs to run the utility standalone,
