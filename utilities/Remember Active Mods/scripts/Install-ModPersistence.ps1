@@ -4,6 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "NativePathEncoding.ps1")
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_mod_persistence_originals"
@@ -185,12 +186,8 @@ function New-SectionHeader {
 function New-PatchBlob {
     param(
         [uint32]$PatchVa,
-        [Parameter(Mandatory = $true)][string]$PreferencePath
+        [Parameter(Mandatory = $true)][byte[]]$PreferencePathBytes
     )
-
-    if ([Text.Encoding]::ASCII.GetByteCount($PreferencePath) -ge 0x100) {
-        throw "The Remember Active Mods preference path is too long to embed safely: $PreferencePath"
-    }
 
     $bytes = New-Object byte[] $PatchRawSize
 
@@ -303,7 +300,8 @@ function New-PatchBlob {
     $commitTail.CopyTo($committingLoadRestoreBlob, $loadRestoreBlob.Length - 2)
     Set-Bytes 0x300 $committingLoadRestoreBlob
 
-    Set-AsciiZ $PreferencePathBlobOffset $PreferencePath
+    Set-Bytes $PreferencePathBlobOffset $PreferencePathBytes
+    $bytes[$PreferencePathBlobOffset + $PreferencePathBytes.Length] = 0
     Set-AsciiZ 0x1A8 "wb"
     Set-AsciiZ 0x1AB "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X`r`n"
     Set-AsciiZ 0x1F0 "rb"
@@ -528,6 +526,12 @@ $preferenceDir = Join-Path (
 ) "MajestyHD"
 $preferencePath = Join-Path $preferenceDir "MajestyModPersistence.txt"
 $legacyPreferencePath = Join-Path $resolvedGamePath "MajestyModPersistence.txt"
+[byte[]]$preferencePathBytes = ConvertTo-MajestyNarrowPathBytes `
+    -Path $preferencePath `
+    -UtilityName "Remember Active Mods"
+if ($preferencePathBytes.Length -ge 0x100) {
+    throw "The Remember Active Mods preference path is too long to embed safely: $preferencePath. No game files were changed."
+}
 
 if (-not (Test-Path -LiteralPath $exePath)) {
     throw "Could not find MajestyHD.exe at $exePath."
@@ -564,7 +568,7 @@ if ($existingSection) {
 $patchSectionVa = [uint32]($pe.ImageBase + $patchSectionRva)
 $patchedFileSize = [int]($patchSectionRawOffset + $PatchRawSize)
 $PatchSectionHeader = New-SectionHeader $SectionName $PatchVirtualSize $patchSectionRva $PatchRawSize $patchSectionRawOffset
-$patchBlob = New-PatchBlob $patchSectionVa $preferencePath
+$patchBlob = New-PatchBlob $patchSectionVa $preferencePathBytes
 [byte[]]$PatchedSaveCall = New-RelativeCallBytes $SaveCallVa $patchSectionVa
 [byte[]]$PatchedLoadCall = New-RelativeCallBytes $LoadCallVa ($patchSectionVa + 0x300)
 $newSizeOfImage = Align-Value ([uint32]($patchSectionRva + $PatchVirtualSize)) ([uint32]$pe.SectionAlignment)

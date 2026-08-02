@@ -4,6 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "NativePathEncoding.ps1")
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_remember_game_speed_originals"
@@ -240,7 +241,7 @@ function Write-Bytes {
 function New-PatchBlob {
     param(
         [uint32]$PatchVa,
-        [string]$SpeedPreferencePath
+        [Parameter(Mandatory = $true)][byte[]]$PreferencePathBytes
     )
 
     $bytes = New-Object byte[] $PatchRawSize
@@ -250,10 +251,6 @@ function New-PatchBlob {
     $speedTempVa = $PatchVa + 0x780
     $dirtyFlagVa = $PatchVa + 0x784
     $loadSpeedVa = $PatchVa + 0x500
-    if ([Text.Encoding]::ASCII.GetByteCount($SpeedPreferencePath) -ge 0x100) {
-        throw "The Remember Game Speed preference path is too long to embed safely."
-    }
-
     function Set-Bytes {
         param([int]$Offset, [byte[]]$Patch)
         for ($i = 0; $i -lt $Patch.Length; $i++) {
@@ -499,7 +496,8 @@ function New-PatchBlob {
     Set-UInt32 0x589 $FwriteIat
     Set-UInt32 0x593 $FcloseIat
 
-    Set-AsciiZ 0x600 $SpeedPreferencePath
+    Set-Bytes 0x600 $PreferencePathBytes
+    $bytes[0x600 + $PreferencePathBytes.Length] = 0
     Set-AsciiZ 0x700 "wb"
     Set-AsciiZ 0x703 "rb"
 
@@ -610,6 +608,12 @@ $preferenceDir = Join-Path (
 ) "MajestyHD"
 $preferencePath = Join-Path $preferenceDir "MajestySessionSpeed.bin"
 $legacyPreferencePath = Join-Path $resolvedGamePath "MajestySessionSpeed.bin"
+[byte[]]$preferencePathBytes = ConvertTo-MajestyNarrowPathBytes `
+    -Path $preferencePath `
+    -UtilityName "Remember Game Speed"
+if ($preferencePathBytes.Length -ge 0x100) {
+    throw "The Remember Game Speed preference path is too long to embed safely: $preferencePath. No game files were changed."
+}
 
 if (-not (Test-Path -LiteralPath $exePath)) {
     throw "Could not find MajestyHD.exe at $exePath."
@@ -647,7 +651,7 @@ if ($existingSection) {
     }
 }
 
-$patchBlob = New-PatchBlob $patchSectionVa $preferencePath
+$patchBlob = New-PatchBlob $patchSectionVa $preferencePathBytes
 $newSliderHook = New-RelativeJumpBytes $SpeedSliderSaveVa $patchSectionVa
 $newStepSlowerHook = New-RelativeCallBytes $SpeedStepSlowerVa ($patchSectionVa + 0x550)
 $newStepSlowerHook += [byte[]]@(0x90)

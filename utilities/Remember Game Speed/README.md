@@ -18,6 +18,11 @@ After that, Majesty writes `MajestySessionSpeed.bin` under
 write access. It uses that saved speed when new quests start, saved games load,
 and the game is relaunched.
 
+The installer encodes this path using Windows' active ANSI code page, matching
+Majesty's narrow file API. If the path cannot be represented exactly,
+installation stops before changing `MajestyHD.exe` instead of installing a
+patch that cannot save.
+
 If Windows blocks the patch because the game is under `Program Files`,
 right-click the install BAT and choose **Run as administrator**.
 

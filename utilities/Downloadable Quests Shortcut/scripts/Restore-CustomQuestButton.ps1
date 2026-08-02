@@ -117,7 +117,6 @@ $resolvedGamePath = Get-MajestyPath $GamePath
 $dataPath = Join-Path $resolvedGamePath "Data"
 $backupDir = Join-Path $dataPath "_custom_quest_button_originals"
 $exePath = Join-Path $resolvedGamePath "MajestyHD.exe"
-$exeBackup = Join-Path $backupDir "MajestyHD.exe.original"
 
 Write-Host "Majesty Gold HD Custom Quest Button restore"
 Write-Host "Game path: $resolvedGamePath"

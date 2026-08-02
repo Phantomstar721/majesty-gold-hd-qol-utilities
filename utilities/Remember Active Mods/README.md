@@ -33,6 +33,11 @@ The saved preset file, `%LOCALAPPDATA%\MajestyHD\MajestyModPersistence.txt`, is
 left in place. It is
 harmless, and keeping it means your choices are still there if you reinstall the patch.
 
+The installer encodes this path using Windows' active ANSI code page, matching
+Majesty's narrow file API. If the path cannot be represented exactly,
+installation stops before changing `MajestyHD.exe` instead of installing a
+patch that cannot save.
+
 ## What It Changes
 
 The installer patches `MajestyHD.exe` so the game can:

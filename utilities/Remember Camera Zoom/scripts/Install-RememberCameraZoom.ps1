@@ -4,6 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "NativePathEncoding.ps1")
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_remember_camera_zoom_originals"
@@ -222,7 +223,7 @@ function New-UInt32Bytes {
 function New-PatchBlob {
     param(
         [uint32]$PatchVa,
-        [Parameter(Mandatory = $true)][string]$PreferencePath
+        [Parameter(Mandatory = $true)][byte[]]$PreferencePathBytes
     )
 
     $bytes = New-Object byte[] $PatchRawSize
@@ -241,10 +242,6 @@ function New-PatchBlob {
     $wbVa = $PatchVa + 0x540
     $rbVa = $PatchVa + 0x543
     $zoomTempVa = $PatchVa + 0x700
-
-    if ([Text.Encoding]::ASCII.GetByteCount($PreferencePath) -ge 0x100) {
-        throw "The Remember Camera Zoom preference path is too long to embed safely: $PreferencePath"
-    }
 
     function Set-Bytes {
         param([int]$Offset, [byte[]]$Patch)
@@ -341,7 +338,8 @@ function New-PatchBlob {
     (New-RelativeJumpBytes ($restoreZoomVa + 0x56) $ZoomSetterVa).CopyTo($bytes, 0x156)
     (New-RelativeJumpBytes ($restoreZoomVa + 0x5C) $ZoomSetterVa).CopyTo($bytes, 0x15C)
 
-    Set-AsciiZ 0x600 $PreferencePath
+    Set-Bytes 0x600 $PreferencePathBytes
+    $bytes[0x600 + $PreferencePathBytes.Length] = 0
     Set-AsciiZ 0x540 "wb"
     Set-AsciiZ 0x543 "rb"
 
@@ -452,6 +450,12 @@ $preferenceDir = Join-Path (
 ) "MajestyHD"
 $preferencePath = Join-Path $preferenceDir "MajestyCameraZoom.bin"
 $legacyPreferencePath = Join-Path $resolvedGamePath "MajestyCameraZoom.bin"
+[byte[]]$preferencePathBytes = ConvertTo-MajestyNarrowPathBytes `
+    -Path $preferencePath `
+    -UtilityName "Remember Camera Zoom"
+if ($preferencePathBytes.Length -ge 0x100) {
+    throw "The Remember Camera Zoom preference path is too long to embed safely: $preferencePath. No game files were changed."
+}
 
 if (-not (Test-Path -LiteralPath $exePath)) {
     throw "Could not find MajestyHD.exe at $exePath."
@@ -489,7 +493,7 @@ if ($existingSection) {
     }
 }
 
-$patchBlob = New-PatchBlob $patchSectionVa $preferencePath
+$patchBlob = New-PatchBlob $patchSectionVa $preferencePathBytes
 $newConstructorHook = New-RelativeCallBytes $ZoomConstructorCallVa ($patchSectionVa + 0x100)
 $newVtableEntry = New-UInt32Bytes $patchSectionVa
 
