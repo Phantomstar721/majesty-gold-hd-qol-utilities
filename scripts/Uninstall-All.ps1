@@ -63,8 +63,9 @@ Write-Host ""
 # Reverse of the install order. Utilities that append a PE section can only be
 # removed while they are the last one added, so the newest must go first.
 #
-# If you also installed the standalone Speedrun Timer, remove that before
-# running this, since its section sits after everything here.
+# If you also installed the standalone Speedrun Timer (.msrt) or the Freestyle
+# Custom CAM Fix (.mfsp), remove those first, newest first, since their sections
+# sit after everything here.
 Invoke-UtilityScript "Remember Camera Zoom" "utilities\Remember Camera Zoom\scripts\Restore-RememberCameraZoom.ps1"
 Invoke-UtilityScript "Remember Game Speed" "utilities\Remember Game Speed\scripts\Restore-RememberGameSpeed.ps1"
 Invoke-UtilityScript "Remember Active Mods" "utilities\Remember Active Mods\scripts\Restore-ModPersistence.ps1"

@@ -70,8 +70,9 @@ uninstaller already does this for you. If you uninstall utilities individually
 and get a message about a section not being last, remove the newer ones first
 and try again.
 
-If you also installed the standalone **Speedrun Timer**, uninstall that before
-running the bundle uninstaller, since its section sits after everything here.
+If you also installed the standalone **Speedrun Timer** (`.msrt`) or the
+**Freestyle Custom CAM Fix** (`.mfsp`), uninstall those first and newest first,
+since their sections sit after everything here.
 
 ## Notes
 
