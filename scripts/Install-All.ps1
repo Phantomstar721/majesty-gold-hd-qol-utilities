@@ -67,6 +67,7 @@ Invoke-UtilityScript "Skip Intro Videos" "utilities\Skip Intro Videos\scripts\In
 Invoke-UtilityScript "Downloadable Quests Shortcut" "utilities\Downloadable Quests Shortcut\scripts\Install-DownloadableQuestShortcut.ps1"
 Invoke-UtilityScript "Quest Map Drag" "utilities\Quest Map Drag\scripts\Install-QuestMapDragPan.ps1"
 Invoke-UtilityScript "Unlock All Quests" "utilities\Unlock All Quests\scripts\Install-UnlockAllQuests.ps1"
+Invoke-UtilityScript "Suppress All Message Flags" "utilities\Suppress All Message Flags\scripts\Install-SuppressAllMessageFlags.ps1"
 Invoke-UtilityScript "Remember Active Mods" "utilities\Remember Active Mods\scripts\Install-ModPersistence.ps1"
 Invoke-UtilityScript "Remember Game Speed" "utilities\Remember Game Speed\scripts\Install-RememberGameSpeed.ps1"
 Invoke-UtilityScript "Remember Camera Zoom" "utilities\Remember Camera Zoom\scripts\Install-RememberCameraZoom.ps1"

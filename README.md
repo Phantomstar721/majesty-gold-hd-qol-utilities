@@ -20,6 +20,9 @@ Steam version of **Majesty Gold HD**.
   saved games, new quests, and future Majesty launches.
 - **Remember Camera Zoom**: saves the in-quest camera zoom button setting and
   restores it for new quests and future Majesty launches.
+- **Suppress All Message Flags**: removes scripted message banner icons, their
+  notification sound, and forced mini-camera focus while leaving reward flags
+  and normal camera controls unchanged.
 
 ## Install Everything
 
@@ -101,6 +104,7 @@ left behind by the uninstallers so reinstalling the patch keeps your last zoom.
 - `majesty-gold-hd-remember-active-mods`
 - `majesty-gold-hd-remember-game-speed`
 - `majesty-gold-hd-remember-camera-zoom`
+- `majesty-gold-hd-suppress-all-message-flags`
 
 ## Maintaining this bundle
 

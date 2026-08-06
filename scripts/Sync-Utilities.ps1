@@ -50,6 +50,7 @@ $UtilityRepos = [ordered]@{
     "Remember Camera Zoom"         = "majesty-gold-hd-remember-camera-zoom"
     "Remember Game Speed"          = "majesty-gold-hd-remember-game-speed"
     "Skip Intro Videos"            = "majesty-gold-hd-skip-intro-videos"
+    "Suppress All Message Flags"   = "majesty-gold-hd-suppress-all-message-flags"
     "Unlock All Quests"            = "majesty-gold-hd-unlock-all-quests"
 }
 
