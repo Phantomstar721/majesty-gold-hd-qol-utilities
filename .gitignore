@@ -1,5 +1,7 @@
 docs/internal/
-dist/
 .tmp/
+.venv-build/
+dist/
 .tools/
-
+__pycache__/
+*.pyc

@@ -1,18 +1,11 @@
 <#
 .SYNOPSIS
-    Builds the distributable bundle zip from this working tree.
+    Builds the distributable Workshop/release zip.
 
 .DESCRIPTION
-    The zip used to be assembled by hand, and it showed: the copy sitting in
-    dist\ was three weeks stale and still contained a "Better Quest Map Pan"
-    folder from before that utility was renamed to "Quest Map Drag". Nothing
-    tied the archive to the tree it was supposedly built from.
-
-    This script verifies the bundle is in sync with the source repositories,
-    then builds the archive from the tree, so what ships is what is committed.
-
-    Maintainer scripts are deliberately excluded. Someone who downloads the zip
-    gets the installers and nothing else.
+    Verifies that the embedded utilities match their source repositories,
+    builds the self-contained graphical installer, and packages only the EXE,
+    public README, and license.
 
 .PARAMETER OutputPath
     Where to write the archive. Defaults to dist\majesty-qol-utilities.zip.
@@ -42,16 +35,7 @@ if (-not $OutputPath) {
 }
 
 # What a user downloading the zip needs. Maintainer tooling stays out.
-$RootFiles = @(
-    "Install - All Majesty QoL Utilities.bat"
-    "Uninstall - Restore Stock Majesty QoL.bat"
-    "README.md"
-    "LICENSE"
-)
-$ScriptFiles = @(
-    "Install-All.ps1"
-    "Uninstall-All.ps1"
-)
+$RootFiles = @("Majesty QoL Utilities.exe", "README.md", "LICENSE")
 
 Write-Host "Majesty Gold HD QoL Utilities bundle build"
 Write-Host "Bundle: $BundleRoot"
@@ -74,8 +58,11 @@ if ($SkipSyncCheck) {
     Write-Host ""
 }
 
-# Stage what ships, so the archive cannot pick up dist\, .git, .gitignore or
-# the maintainer scripts by accident.
+# Build the self-contained app before staging the three public files.
+& (Join-Path $PSScriptRoot "Build-Exe.ps1") -OutputDir $BundleRoot
+if ($LASTEXITCODE -ne 0) { throw "The executable build failed." }
+
+# Stage what ships, so the archive cannot pick up source or maintainer files.
 $staging = Join-Path ([IO.Path]::GetTempPath()) ("majesty-qol-bundle-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $staging -Force | Out-Null
 
@@ -88,22 +75,6 @@ try {
         Copy-Item -LiteralPath $from -Destination (Join-Path $staging $name)
     }
 
-    $stagingScripts = Join-Path $staging "scripts"
-    New-Item -ItemType Directory -Path $stagingScripts -Force | Out-Null
-    foreach ($name in $ScriptFiles) {
-        $from = Join-Path $PSScriptRoot $name
-        if (-not (Test-Path -LiteralPath $from)) {
-            throw "Missing bundle script: $from"
-        }
-        Copy-Item -LiteralPath $from -Destination (Join-Path $stagingScripts $name)
-    }
-
-    $utilitiesSource = Join-Path $BundleRoot "utilities"
-    if (-not (Test-Path -LiteralPath $utilitiesSource)) {
-        throw "Missing utilities folder: $utilitiesSource"
-    }
-    Copy-Item -LiteralPath $utilitiesSource -Destination (Join-Path $staging "utilities") -Recurse
-
     $outputDir = Split-Path -Parent $OutputPath
     if (-not (Test-Path -LiteralPath $outputDir)) {
         New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
@@ -115,14 +86,8 @@ try {
     Compress-Archive -Path (Join-Path $staging "*") -DestinationPath $OutputPath
 
     $entries = Get-ChildItem -Path $staging -Recurse -File
-    $utilities = Get-ChildItem -Path (Join-Path $staging "utilities") -Directory
-
     Write-Host ("Built {0}" -f $OutputPath)
     Write-Host ("  {0:N1} KB, {1} files" -f ((Get-Item $OutputPath).Length / 1KB), $entries.Count)
-    Write-Host ("  {0} utilities:" -f $utilities.Count)
-    foreach ($utility in $utilities) {
-        Write-Host ("    {0}" -f $utility.Name)
-    }
 } finally {
     Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
 }
