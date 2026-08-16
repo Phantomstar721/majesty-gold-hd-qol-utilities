@@ -9,24 +9,28 @@ $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_generic_visitor_lists_originals"
 $SectionName = ".mgvl"
 $SectionCharacteristics = 1610612768 # 0x60000020: code, execute, read
-$PatchVirtualSize = 0x64
+$PatchVirtualSize = 0xBA
 $PatchRawSize = 0x200
+$IconPayloadOffset = 0x80
 
 $GateOffset = 0x979D5
 $IconDispatchOffset = 0x97818
-$IconCodeCaveOffset = 0x33439D
+$IconDispatchVa = 0x498418
 $ThreatDispatchOffset = 0x97AD1
 $ThreatDispatchVa = 0x4986D1
 $MonsterResolverOffset = 0xBA4A0
+$MonsterResolverVa = 0x4BB0A0
 $DisplayClassifierOffset = 0x107910
 $DisplayClassifierVa = 0x508510
 $AttributeGetterOffset = 0x1B93D0
 $AttributeGetterVa = 0x5B9FD0
+$IconHeroResumeVa = 0x498421
+$IconMonsterResumeVa = 0x49847D
 
 [byte[]]$OriginalGateBytes = @(0x0F, 0x85, 0xB6, 0x04, 0x00, 0x00)
 [byte[]]$PatchedGateBytes = @(0x0F, 0x85, 0xCA, 0x00, 0x00, 0x00)
 [byte[]]$OriginalIconDispatchBytes = @(0x6A, 0x01, 0x8D, 0x8C, 0x24, 0xC4, 0x00, 0x00, 0x00)
-[byte[]]$PatchedIconDispatchBytes = @(0xE9, 0x80, 0xCB, 0x29, 0x00, 0x90, 0x90, 0x90, 0x90)
+[byte[]]$LegacyIconDispatchBytes = @(0xE9, 0x80, 0xCB, 0x29, 0x00, 0x90, 0x90, 0x90, 0x90)
 [byte[]]$OriginalThreatDispatchBytes = @(0xE8, 0xFA, 0x18, 0x12, 0x00)
 [byte[]]$MonsterResolverSignature = @(
     0x53, 0x55, 0x56, 0x8B, 0x74, 0x24, 0x10, 0x57,
@@ -41,14 +45,14 @@ $AttributeGetterVa = 0x5B9FD0
     0x8B, 0x54, 0x24, 0x04, 0x8D, 0x44, 0x24, 0x04,
     0x50, 0x52, 0x83, 0xC1, 0x04, 0xE8, 0x9E, 0x98
 )
-[byte[]]$IconDispatchPayload = @(
+[byte[]]$LegacyIconPayload = @(
     0x57, 0xE8, 0x6D, 0x35, 0xDD, 0xFF, 0x83, 0xC4, 0x04, 0x83, 0xF8, 0x01, 0x74, 0x1E,
     0x83, 0xF8, 0x02, 0x74, 0x19, 0x8B, 0x47, 0x28, 0x50, 0x8D, 0x84, 0x24, 0xC4, 0x00,
     0x00, 0x00, 0x50, 0xE8, 0xDF, 0x60, 0xD8, 0xFF, 0x83, 0xC4, 0x08, 0xE9, 0xB4, 0x34,
     0xD6, 0xFF, 0x6A, 0x01, 0x8D, 0x8C, 0x24, 0xC4, 0x00, 0x00, 0x00, 0xE9, 0x4A, 0x34,
     0xD6, 0xFF
 )
-[byte[]]$EmptyIconCodeCave = New-Object byte[] $IconDispatchPayload.Length
+$LegacyIconCodeCaveOffset = 0x33439D
 
 function Read-U16 {
     param([byte[]]$Bytes, [int]$Offset)
@@ -146,7 +150,15 @@ function New-RelativeInstruction {
     return $result
 }
 
-function New-ThreatRankBlob {
+function New-IconDispatchPatch {
+    param([uint32]$TargetVa)
+    [byte[]]$result = New-Object byte[] 9
+    Write-Bytes $result 0 (New-RelativeInstruction 0xE9 $IconDispatchVa $TargetVa)
+    for ($i = 5; $i -lt $result.Length; $i++) { $result[$i] = 0x90 }
+    return $result
+}
+
+function New-LegacyPatchBlob {
     param([uint32]$PatchVa)
     [byte[]]$blob = New-Object byte[] $PatchRawSize
     [byte[]]$code = @(
@@ -164,6 +176,24 @@ function New-ThreatRankBlob {
     [BitConverter]::GetBytes([uint32]($PatchVa + 0x48)).CopyTo($code, 0x2B)
     Write-Bytes $code 0x43 (New-RelativeInstruction 0xE9 ([uint32]($PatchVa + 0x43)) $AttributeGetterVa)
     Write-Bytes $blob 0 $code
+    return $blob
+}
+
+function New-PatchBlob {
+    param([uint32]$PatchVa)
+    [byte[]]$blob = New-LegacyPatchBlob $PatchVa
+    [byte[]]$iconCode = @(
+        0x57, 0xE8, 0, 0, 0, 0, 0x83, 0xC4, 0x04, 0x83, 0xF8, 0x01, 0x74, 0x1E,
+        0x83, 0xF8, 0x02, 0x74, 0x19, 0x8B, 0x47, 0x28, 0x50, 0x8D, 0x84, 0x24, 0xC4, 0x00,
+        0x00, 0x00, 0x50, 0xE8, 0, 0, 0, 0, 0x83, 0xC4, 0x08, 0xE9, 0, 0, 0, 0,
+        0x6A, 0x01, 0x8D, 0x8C, 0x24, 0xC4, 0x00, 0x00, 0x00, 0xE9, 0, 0, 0, 0
+    )
+    $iconVa = [uint32]($PatchVa + $IconPayloadOffset)
+    Write-Bytes $iconCode 0x01 (New-RelativeInstruction 0xE8 ([uint32]($iconVa + 0x01)) $DisplayClassifierVa)
+    Write-Bytes $iconCode 0x1F (New-RelativeInstruction 0xE8 ([uint32]($iconVa + 0x1F)) $MonsterResolverVa)
+    Write-Bytes $iconCode 0x27 (New-RelativeInstruction 0xE9 ([uint32]($iconVa + 0x27)) $IconMonsterResumeVa)
+    Write-Bytes $iconCode 0x35 (New-RelativeInstruction 0xE9 ([uint32]($iconVa + 0x35)) $IconHeroResumeVa)
+    Write-Bytes $blob $IconPayloadOffset $iconCode
     return $blob
 }
 
@@ -260,7 +290,10 @@ if ($existingSection) {
 
 $patchVa = [uint32]($pe.ImageBase + $patchRva)
 $patchHeader = New-SectionHeader $SectionName $PatchVirtualSize $patchRva $PatchRawSize $patchRawOffset
-$patchBlob = New-ThreatRankBlob $patchVa
+$legacyPatchHeader = New-SectionHeader $SectionName 0x64 $patchRva $PatchRawSize $patchRawOffset
+$patchBlob = New-PatchBlob $patchVa
+$legacyPatchBlob = New-LegacyPatchBlob $patchVa
+$patchedIconDispatch = New-IconDispatchPatch ([uint32]($patchVa + $IconPayloadOffset))
 $patchedThreatDispatch = New-RelativeInstruction 0xE8 $ThreatDispatchVa $patchVa
 $patchedFileSize = [int]($patchRawOffset + $PatchRawSize)
 $newSizeOfImage = Align-Value ([uint32]($patchRva + $PatchVirtualSize)) ([uint32]$pe.SectionAlignment)
@@ -268,23 +301,24 @@ $newSizeOfImage = Align-Value ([uint32]($patchRva + $PatchVirtualSize)) ([uint32
 $isGateStock = Test-BytesEqual $bytes $GateOffset $OriginalGateBytes
 $isGatePatched = Test-BytesEqual $bytes $GateOffset $PatchedGateBytes
 $isIconStock = Test-BytesEqual $bytes $IconDispatchOffset $OriginalIconDispatchBytes
-$isIconPatched = Test-BytesEqual $bytes $IconDispatchOffset $PatchedIconDispatchBytes
-$isIconCaveEmpty = Test-BytesEqual $bytes $IconCodeCaveOffset $EmptyIconCodeCave
-$isIconCavePatched = Test-BytesEqual $bytes $IconCodeCaveOffset $IconDispatchPayload
+$isIconPatched = Test-BytesEqual $bytes $IconDispatchOffset $patchedIconDispatch
+$isLegacyIconPatched = (Test-BytesEqual $bytes $IconDispatchOffset $LegacyIconDispatchBytes) -and
+    (Test-BytesEqual $bytes $LegacyIconCodeCaveOffset $LegacyIconPayload)
 $isThreatStock = Test-BytesEqual $bytes $ThreatDispatchOffset $OriginalThreatDispatchBytes
 $isThreatPatched = Test-BytesEqual $bytes $ThreatDispatchOffset $patchedThreatDispatch
 $headerPatched = [bool]$existingSection -and (Test-BytesEqual $bytes $patchHeaderOffset $patchHeader)
+$legacyHeaderPatched = [bool]$existingSection -and (Test-BytesEqual $bytes $patchHeaderOffset $legacyPatchHeader)
 $blobPatched = [bool]$existingSection -and (Test-BytesEqual $bytes $patchRawOffset $patchBlob)
+$legacyBlobPatched = [bool]$existingSection -and (Test-BytesEqual $bytes $patchRawOffset $legacyPatchBlob)
 $blobEmpty = [bool]$existingSection -and (Test-ZeroRange $bytes $patchRawOffset $PatchRawSize)
 
 if (-not $isGateStock -and -not $isGatePatched) { throw "Unexpected visitor-row category-gate bytes at 0x$($GateOffset.ToString('X'))." }
-if (-not $isIconStock -and -not $isIconPatched) { throw "Unexpected visitor-row icon bytes at 0x$($IconDispatchOffset.ToString('X'))." }
-if (-not $isIconCaveEmpty -and -not $isIconCavePatched) { throw "The stock text padding reserved for the icon dispatcher is occupied." }
-if ($isIconStock -ne $isIconCaveEmpty) { throw "The visitor icon dispatch and payload are inconsistent." }
+if (-not $isIconStock -and -not $isIconPatched -and -not $isLegacyIconPatched) { throw "Unexpected visitor-row icon bytes at 0x$($IconDispatchOffset.ToString('X'))." }
 if (-not $isThreatStock -and -not $isThreatPatched) { throw "Unexpected visitor-row level-lookup bytes at 0x$($ThreatDispatchOffset.ToString('X'))." }
-if ($existingSection -and -not $headerPatched) { throw "The existing .mgvl section header is not owned by this utility." }
-if ($existingSection -and -not $blobPatched -and -not $blobEmpty) { throw "The existing .mgvl section data is neither installed nor inert." }
-if ($isThreatPatched -and -not $blobPatched) { throw "The Threat Rank hook points to an incomplete .mgvl section." }
+if ($existingSection -and -not $headerPatched -and -not $legacyHeaderPatched) { throw "The existing .mgvl section header is not owned by this utility." }
+if ($existingSection -and -not $blobPatched -and -not $legacyBlobPatched -and -not $blobEmpty) { throw "The existing .mgvl section data is neither installed nor inert." }
+if ($isThreatPatched -and -not $blobPatched -and -not $legacyBlobPatched) { throw "The Threat Rank hook points to an incomplete .mgvl section." }
+if ($isLegacyIconPatched -and -not ($legacyHeaderPatched -and $legacyBlobPatched -and $isThreatPatched)) { throw "The legacy visitor icon hook is incomplete." }
 if (-not (Test-BytesEqual $bytes $MonsterResolverOffset $MonsterResolverSignature)) { throw "The stock IX92/IX94 resolver signature was not found." }
 if (-not (Test-BytesEqual $bytes $DisplayClassifierOffset $DisplayClassifierSignature)) { throw "The stock display-category classifier signature was not found." }
 if (-not (Test-BytesEqual $bytes $AttributeGetterOffset $AttributeGetterSignature)) { throw "The stock attribute getter signature was not found." }
@@ -294,7 +328,7 @@ Write-Host "Game path: $resolvedGamePath"
 if ($DryRun) { Write-Host "Dry run: no files will be changed." }
 Write-Host ""
 
-if ($isGatePatched -and $isIconPatched -and $isIconCavePatched -and $isThreatPatched -and $headerPatched -and $blobPatched) {
+if ($isGatePatched -and $isIconPatched -and $isThreatPatched -and $headerPatched -and $blobPatched) {
     Write-Host "MajestyHD.exe: generic visitor-list rendering, monster icons, and Threat Ranks are already installed."
     return
 }
@@ -320,8 +354,8 @@ if (-not $existingSection) {
 }
 Write-Bytes $patchedBytes $patchHeaderOffset $patchHeader
 Write-Bytes $patchedBytes $GateOffset $PatchedGateBytes
-Write-Bytes $patchedBytes $IconCodeCaveOffset $IconDispatchPayload
-Write-Bytes $patchedBytes $IconDispatchOffset $PatchedIconDispatchBytes
+if ($isLegacyIconPatched) { Write-Bytes $patchedBytes $LegacyIconCodeCaveOffset (New-Object byte[] $LegacyIconPayload.Length) }
+Write-Bytes $patchedBytes $IconDispatchOffset $patchedIconDispatch
 Write-Bytes $patchedBytes $patchRawOffset $patchBlob
 Write-Bytes $patchedBytes $ThreatDispatchOffset $patchedThreatDispatch
 [IO.File]::WriteAllBytes($exePath, $patchedBytes)

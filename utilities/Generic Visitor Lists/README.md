@@ -33,11 +33,10 @@ Uninstall - Restore Stock Visitor Lists.bat
 
 ## What It Changes
 
-This changes three guarded dispatch/call sites in `MajestyHD.exe`. The icon
-dispatcher occupies unused padding in the stock executable's final code
-section. The Threat Rank converter lives in a dedicated `.mgvl` PE section
-whose location is calculated when installed, so it does not claim storage
-owned by another patch.
+This changes three guarded dispatch/call sites in `MajestyHD.exe`. Both the icon
+dispatcher and Threat Rank converter live in a dedicated `.mgvl` PE section
+whose location is calculated when installed, so the utility does not claim
+padding or storage owned by another patch.
 
 The stock visitor controller already creates rows for every occupant and
 stores their valid unit IDs. It also already contains a complete
