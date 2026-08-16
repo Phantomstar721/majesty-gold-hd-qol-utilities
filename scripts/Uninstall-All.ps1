@@ -66,6 +66,7 @@ Write-Host ""
 # If you also installed the standalone Speedrun Timer (.msrt) or the Freestyle
 # Custom CAM Fix (.mfsp), remove those first, newest first, since their sections
 # sit after everything here.
+Invoke-UtilityScript "Generic Visitor Lists" "utilities\Generic Visitor Lists\scripts\Restore-GenericVisitorLists.ps1"
 Invoke-UtilityScript "Remember Camera Zoom" "utilities\Remember Camera Zoom\scripts\Restore-RememberCameraZoom.ps1"
 Invoke-UtilityScript "Remember Game Speed" "utilities\Remember Game Speed\scripts\Restore-RememberGameSpeed.ps1"
 Invoke-UtilityScript "Remember Active Mods" "utilities\Remember Active Mods\scripts\Restore-ModPersistence.ps1"

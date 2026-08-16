@@ -45,6 +45,7 @@ if (-not $SourceRoot) {
 # users see, so it does not always match the repository name.
 $UtilityRepos = [ordered]@{
     "Downloadable Quests Shortcut" = "majesty-gold-hd-downloadable-quests-shortcut"
+    "Generic Visitor Lists"         = "majesty-gold-hd-generic-visitor-lists"
     "Quest Map Drag"               = "majesty-gold-hd-quest-map-drag"
     "Remember Active Mods"         = "majesty-gold-hd-remember-active-mods"
     "Remember Camera Zoom"         = "majesty-gold-hd-remember-camera-zoom"

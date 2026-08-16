@@ -42,6 +42,9 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue(installer.utility_script(utility.install_script).is_file(), utility.name)
             self.assertTrue(installer.utility_script(utility.uninstall_script).is_file(), utility.name)
 
+    def test_generic_visitor_lists_is_last_for_safe_section_order(self):
+        self.assertEqual(installer.UTILITIES[-1].key, "generic-visitors")
+
     @mock.patch("qol_installer.subprocess.run")
     def test_detection_recognizes_installed_phrase(self, run):
         run.return_value = mock.Mock(returncode=0, stdout="MajestyHD.exe: click-drag panning is already installed.", stderr="")

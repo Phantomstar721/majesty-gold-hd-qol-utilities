@@ -44,6 +44,8 @@ UTILITIES = (
             r"Remember Game Speed\scripts\Install-RememberGameSpeed.ps1", r"Remember Game Speed\scripts\Restore-RememberGameSpeed.ps1", "already installed"),
     Utility("remember-zoom", "Remember Camera Zoom", "Saves and restores the in-quest camera zoom setting.",
             r"Remember Camera Zoom\scripts\Install-RememberCameraZoom.ps1", r"Remember Camera Zoom\scripts\Restore-RememberCameraZoom.ps1", "already installed"),
+    Utility("generic-visitors", "Generic Visitor Lists", "Displays nonhero visitors with stock monster icons and XP-derived Threat Ranks.",
+            r"Generic Visitor Lists\scripts\Install-GenericVisitorLists.ps1", r"Generic Visitor Lists\scripts\Restore-GenericVisitorLists.ps1", "Threat Ranks are already installed"),
 )
 
 

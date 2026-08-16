@@ -40,6 +40,32 @@ Run anyway** only if you downloaded it from the official Workshop item/release.
 - **Remember Active Mods** — restores your active-mod list on later launches.
 - **Remember Game Speed** — saves and restores the in-quest speed setting.
 - **Remember Camera Zoom** — saves and restores the camera zoom setting.
+- **Generic Visitor Lists** — lets building visitor lists render nonhero units
+  with stock monster icons, live name/action/HP data, and a Threat Rank.
+
+### Monster Threat Rank
+
+Generic Visitor Lists uses each monster's stock `ATTRIB_LevelXP` kill reward,
+sourced from its character XML `<Experience value="..."/>`, as a generic
+strength reference. It divides the 48 stock positive-XP monsters into eight
+roughly even groups while keeping equal XP values together:
+
+| Threat Rank | Monster XP |
+| --- | ---: |
+| 1 | 1-230 |
+| 2 | 231-400 |
+| 3 | 401-500 |
+| 4 | 501-900 |
+| 5 | 901-1500 |
+| 6 | 1501-2000 |
+| 7 | 2001-3500 |
+| 8 | 3501+ |
+
+Threat Rank is a mod-authored display convention, not a recovered stock
+monster-level system. It changes only the number painted in a nonhero visitor
+row and does not alter the unit, its XP reward, or gameplay. Custom monsters
+participate automatically when they define a positive stock-style
+`<Experience>` value.
 
 ## If the app reports unexpected or incompatible EXE data
 
