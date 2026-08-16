@@ -60,12 +60,9 @@ if ($DryRun) {
 }
 Write-Host ""
 
-# Reverse of the install order. Utilities that append a PE section can only be
-# removed while they are the last one added, so the newest must go first.
-#
-# If you also installed the standalone Speedrun Timer (.msrt) or the Freestyle
-# Custom CAM Fix (.mfsp), remove those first, newest first, since their sections
-# sit after everything here.
+# Reverse order keeps the combined log intuitive, but it is not required.
+# Every bundled utility restores its hooks immediately and safely leaves inert
+# private storage when later PE sections retain their current addresses.
 Invoke-UtilityScript "Generic Visitor Lists" "utilities\Generic Visitor Lists\scripts\Restore-GenericVisitorLists.ps1"
 Invoke-UtilityScript "Remember Camera Zoom" "utilities\Remember Camera Zoom\scripts\Restore-RememberCameraZoom.ps1"
 Invoke-UtilityScript "Remember Game Speed" "utilities\Remember Game Speed\scripts\Restore-RememberGameSpeed.ps1"

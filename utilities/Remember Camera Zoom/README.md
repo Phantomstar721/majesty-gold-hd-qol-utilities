@@ -57,6 +57,11 @@ project. If Steam updates `MajestyHD.exe`, run the installer again. The installe
 checks the bytes it plans to patch and stops if the executable is not in a known
 stock or already-patched state.
 
+It can be installed or uninstalled independently of the other QoL patches in
+any order. When a later executable section must retain its address, uninstall
+restores every game hook immediately and leaves only inert `.mczp` storage for
+a future reinstall to reuse.
+
 The repo does not contain Majesty game assets or game files.
 
 ## Non-default game location

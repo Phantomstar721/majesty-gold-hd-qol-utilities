@@ -18,10 +18,10 @@ It checks that installation and marks utilities it recognizes as **Installed**.
 Use the **Full Patch Details** link in the app footer to open this GitHub page
 for implementation notes, source code, and individual utility documentation.
 
-If an individual uninstall reports that its EXE section is not the last one,
-remove newer EXE-section patches first and retry. **Uninstall All** already uses
-the safe reverse order. Standalone patches such as Speedrun Timer may also need
-to be removed first.
+Every bundled utility can be installed or removed independently in any order.
+When a later patch section prevents safe physical truncation, uninstalling
+still restores all behavior immediately and leaves only inert private storage
+that the same utility can reuse on a later install.
 
 The download contains no game files. It applies small, version-checked changes
 to the copy of Majesty Gold HD you already own. Windows may show a SmartScreen

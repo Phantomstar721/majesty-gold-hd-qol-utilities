@@ -60,9 +60,9 @@ if ($DryRun) {
 }
 Write-Host ""
 
-# Preserve this order. Utilities with private PE sections append them after the
-# sections already present; Generic Visitor Lists is deliberately last so its
-# `.mgvl` section can be removed first by Uninstall All.
+# This order keeps the combined log stable. Each utility independently owns,
+# disables, and reuses its private section, so individual install order does
+# not affect whether another utility can later be removed.
 Invoke-UtilityScript "Skip Intro Videos" "utilities\Skip Intro Videos\scripts\Install-NoIntro.ps1"
 Invoke-UtilityScript "Downloadable Quests Shortcut" "utilities\Downloadable Quests Shortcut\scripts\Install-DownloadableQuestShortcut.ps1"
 Invoke-UtilityScript "Quest Map Drag" "utilities\Quest Map Drag\scripts\Install-QuestMapDragPan.ps1"

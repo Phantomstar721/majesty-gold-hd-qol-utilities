@@ -33,6 +33,15 @@ function Align-Value {
     return [uint32](([uint64]([Math]::Ceiling([double]$Value / [double]$Alignment))) * [uint64]$Alignment)
 }
 
+function Test-ZeroRange {
+    param([byte[]]$Bytes, [int]$Offset, [int]$Length)
+    if ($Offset -lt 0 -or ($Offset + $Length) -gt $Bytes.Length) { return $false }
+    for ($i = 0; $i -lt $Length; $i++) {
+        if ($Bytes[$Offset + $i] -ne 0) { return $false }
+    }
+    return $true
+}
+
 function Get-PeInfo {
     param([byte[]]$Bytes)
 
@@ -245,13 +254,17 @@ $patchSectionVa = [uint32]($pe.ImageBase + $section.Rva)
 [byte[]]$PatchedLoadCall = New-RelativeCallBytes $LoadCallVa ($patchSectionVa + 0x300)
 $loadIsPatched = Test-BytesEqual $bytes $LoadCallOffset $PatchedLoadCall
 $saveIsPatched = Test-BytesEqual $bytes $SaveCallOffset $PatchedSaveCall
-
-if (-not ($saveIsPatched -and $loadIsPatched)) {
-    throw "MajestyHD.exe has only part of the mod persistence section patch. Refusing to restore automatically."
-}
-
 $sectionIsLast = ($section.Index -eq ($pe.SectionCount - 1)) -and
                  ($bytes.Length -eq ($section.RawOffset + $PatchRawSize))
+$sectionIsInert = Test-ZeroRange $bytes $section.RawOffset $PatchRawSize
+
+if ($saveIsStock -and $loadIsStock -and $sectionIsInert -and -not $sectionIsLast) {
+    Write-Host "MajestyHD.exe: Remember Active Mods is already uninstalled; its inert private section is reserved for safe reuse."
+    return
+}
+if (-not (($saveIsPatched -and $loadIsPatched) -or ($saveIsStock -and $loadIsStock -and $sectionIsInert))) {
+    throw "MajestyHD.exe has only part of the mod persistence section patch. Refusing to restore automatically."
+}
 
 if ($sectionIsLast) {
     $previousSection = $pe.Sections | Where-Object { $_.Index -eq ($section.Index - 1) } | Select-Object -First 1

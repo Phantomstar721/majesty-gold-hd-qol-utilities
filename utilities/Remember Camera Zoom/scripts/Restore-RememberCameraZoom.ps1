@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $PatchSectionName = ".mczp"
+$PatchRawSize = 0x1000
 
 $ZoomConstructorCallVa = 0x5DDCC6
 $ZoomConstructorCallOffset = 0x1DD0C6
@@ -30,6 +31,15 @@ function Read-U32 {
 function Align-Value {
     param([uint32]$Value, [uint32]$Alignment)
     return [uint32](([uint64]([Math]::Ceiling([double]$Value / [double]$Alignment))) * [uint64]$Alignment)
+}
+
+function Test-ZeroRange {
+    param([byte[]]$Bytes, [int]$Offset, [int]$Length)
+    if ($Offset -lt 0 -or ($Offset + $Length) -gt $Bytes.Length) { return $false }
+    for ($i = 0; $i -lt $Length; $i++) {
+        if ($Bytes[$Offset + $i] -ne 0) { return $false }
+    }
+    return $true
 }
 
 function Get-PeInfo {
@@ -239,23 +249,23 @@ $vtableEntry = [BitConverter]::GetBytes([uint32]$patchVa)
 $constructorIsPatched = Test-BytesEqual $bytes $ZoomConstructorCallOffset $constructorHook
 $vtableIsPatched = Test-BytesEqual $bytes $ZoomVtableEntryOffset $vtableEntry
 $runtimeVtableIsPatched = Test-BytesEqual $bytes $ZoomRuntimeVtableEntryOffset $vtableEntry
+$sectionIsLast = ($section.Index -eq ($pe.SectionCount - 1)) -and
+    ($bytes.Length -eq ($section.RawOffset + $PatchRawSize))
+$sectionIsInert = Test-ZeroRange $bytes $section.RawOffset $PatchRawSize
+$hasInstalledHooks = $constructorIsPatched -or $vtableIsPatched -or $runtimeVtableIsPatched
 
-if (-not ($constructorIsPatched -or $vtableIsPatched -or $runtimeVtableIsPatched)) {
-    Write-Host "MajestyHD.exe: no Remember Camera Zoom hooks are installed."
+if (-not $hasInstalledHooks -and -not $sectionIsInert) {
+    throw "The .mczp section is active, but no complete Remember Camera Zoom hook set was recognized."
+}
+if (-not $hasInstalledHooks -and -not $sectionIsLast) {
+    Write-Host "MajestyHD.exe: Remember Camera Zoom is already uninstalled; its inert private section is reserved for safe reuse."
     return
 }
 
-if ($section.Index -ne ($pe.SectionCount - 1)) {
-    throw ".mczp is not the last section added to MajestyHD.exe, so removing it would break the patches that came after it.
-
-Uninstall in reverse order: whichever utility you installed last must be removed first. Across these tools the section order is .mpst (Remember Active Mods), .mskp (Remember Game Speed), .mczp (Remember Camera Zoom), .msrt (Speedrun Timer) - but only the ones you actually installed will be present.
-
-Run the uninstallers for any utility listed after this one, then run this one again."
+if ($sectionIsLast) {
+    $previousSection = $pe.Sections | Where-Object { $_.Index -eq ($section.Index - 1) } | Select-Object -First 1
+    $restoredSizeOfImage = Align-Value ([uint32]($previousSection.Rva + [Math]::Max($previousSection.VirtualSize, $previousSection.RawSize))) ([uint32]$pe.SectionAlignment)
 }
-
-$previousSection = $pe.Sections | Where-Object { $_.Index -eq ($section.Index - 1) } | Select-Object -First 1
-$restoredFileSize = [int]$section.RawOffset
-$restoredSizeOfImage = Align-Value ([uint32]($previousSection.Rva + [Math]::Max($previousSection.VirtualSize, $previousSection.RawSize))) ([uint32]$pe.SectionAlignment)
 
 if ($DryRun) {
     if ($constructorIsPatched) {
@@ -267,13 +277,18 @@ if ($DryRun) {
     if ($runtimeVtableIsPatched) {
         Write-Host ("MajestyHD.exe: would restore runtime camera zoom vtable entry at file offset 0x{0:X}." -f $ZoomRuntimeVtableEntryOffset)
     }
-    Write-Host ("MajestyHD.exe: would remove .mczp section header at file offset 0x{0:X}." -f $section.HeaderOffset)
-    Write-Host ("MajestyHD.exe: would truncate appended .mczp data back to file offset 0x{0:X}." -f $restoredFileSize)
+    if ($sectionIsLast) {
+        Write-Host ("MajestyHD.exe: would remove .mczp section header at file offset 0x{0:X}." -f $section.HeaderOffset)
+        Write-Host ("MajestyHD.exe: would truncate appended .mczp data back to file offset 0x{0:X}." -f $section.RawOffset)
+    } else {
+        Write-Host "MajestyHD.exe: would leave an inert .mczp section for safe reuse because later sections retain their current addresses."
+    }
     return
 }
 
 Assert-FileWritable $exePath
 
+$restoredFileSize = if ($sectionIsLast) { [int]$section.RawOffset } else { $bytes.Length }
 $restoredBytes = New-Object byte[] $restoredFileSize
 [Array]::Copy($bytes, 0, $restoredBytes, 0, $restoredFileSize)
 
@@ -287,9 +302,13 @@ if ($runtimeVtableIsPatched) {
     Write-Bytes $restoredBytes $ZoomRuntimeVtableEntryOffset $OriginalRuntimeVtableEntryBytes
 }
 
-[BitConverter]::GetBytes([uint16]($pe.SectionCount - 1)).CopyTo($restoredBytes, $pe.SectionCountOffset)
-[BitConverter]::GetBytes([uint32]$restoredSizeOfImage).CopyTo($restoredBytes, $pe.SizeOfImageOffset)
-Write-Bytes $restoredBytes $section.HeaderOffset (New-Object byte[] 40)
+if ($sectionIsLast) {
+    [BitConverter]::GetBytes([uint16]($pe.SectionCount - 1)).CopyTo($restoredBytes, $pe.SectionCountOffset)
+    [BitConverter]::GetBytes([uint32]$restoredSizeOfImage).CopyTo($restoredBytes, $pe.SizeOfImageOffset)
+    Write-Bytes $restoredBytes $section.HeaderOffset (New-Object byte[] 40)
+} else {
+    Write-Bytes $restoredBytes $section.RawOffset (New-Object byte[] $PatchRawSize)
+}
 
 [IO.File]::WriteAllBytes($exePath, $restoredBytes)
 

@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $PatchSectionName = ".mskp"
+$PatchRawSize = 0x1000
 
 $SpeedSliderSaveOffset = 0x6A318
 $SpeedStepSlowerOffset = 0x638F3
@@ -42,6 +43,15 @@ function Read-U32 {
 function Align-Value {
     param([uint32]$Value, [uint32]$Alignment)
     return [uint32](([uint64]([Math]::Ceiling([double]$Value / [double]$Alignment))) * [uint64]$Alignment)
+}
+
+function Test-ZeroRange {
+    param([byte[]]$Bytes, [int]$Offset, [int]$Length)
+    if ($Offset -lt 0 -or ($Offset + $Length) -gt $Bytes.Length) { return $false }
+    for ($i = 0; $i -lt $Length; $i++) {
+        if ($Bytes[$Offset + $i] -ne 0) { return $false }
+    }
+    return $true
 }
 
 function Get-PeInfo {
@@ -312,23 +322,23 @@ $optionsSaveOldPatched = Test-BytesEqual $bytes $OldOptionsSaveOffset $oldOption
 $optionsRestoreOldPatched = Test-BytesEqual $bytes $OldOptionsRestoreOffset $oldOptionsRestoreHook
 $restoreOneOldPatched = Test-BytesEqual $bytes $SpeedRestoreOneOffset $oldSpeedRestoreHook
 $restoreTwoOldPatched = Test-BytesEqual $bytes $SpeedRestoreTwoOffset $oldSpeedSaveHook
+$sectionIsLast = ($section.Index -eq ($pe.SectionCount - 1)) -and
+    ($bytes.Length -eq ($section.RawOffset + $PatchRawSize))
+$sectionIsInert = Test-ZeroRange $bytes $section.RawOffset $PatchRawSize
+$hasInstalledHooks = ($sliderIsPatched -or $stepSlowerIsPatched -or $stepFasterIsPatched -or $restoreOneIsPatched -or $restoreTwoIsPatched -or $restoreTwoPreviousPatched -or $copyOneIsPatched -or $copyTwoIsPatched -or $objectInitOneIsPatched -or $objectInitTwoIsPatched -or $objectInitThreeIsPatched -or $optionsSaveOldPatched -or $optionsRestoreOldPatched -or $restoreOneOldPatched -or $restoreTwoOldPatched)
 
-if (-not ($sliderIsPatched -or $stepSlowerIsPatched -or $stepFasterIsPatched -or $restoreOneIsPatched -or $restoreTwoIsPatched -or $restoreTwoPreviousPatched -or $copyOneIsPatched -or $copyTwoIsPatched -or $objectInitOneIsPatched -or $objectInitTwoIsPatched -or $objectInitThreeIsPatched -or $optionsSaveOldPatched -or $optionsRestoreOldPatched -or $restoreOneOldPatched -or $restoreTwoOldPatched)) {
-    Write-Host "MajestyHD.exe: no Remember Game Speed hooks are installed."
+if (-not $hasInstalledHooks -and -not $sectionIsInert) {
+    throw "The .mskp section is active, but no complete Remember Game Speed hook set was recognized."
+}
+if (-not $hasInstalledHooks -and -not $sectionIsLast) {
+    Write-Host "MajestyHD.exe: Remember Game Speed is already uninstalled; its inert private section is reserved for safe reuse."
     return
 }
 
-if ($section.Index -ne ($pe.SectionCount - 1)) {
-    throw ".mskp is not the last section added to MajestyHD.exe, so removing it would break the patches that came after it.
-
-Uninstall in reverse order: whichever utility you installed last must be removed first. Across these tools the section order is .mpst (Remember Active Mods), .mskp (Remember Game Speed), .mczp (Remember Camera Zoom), .msrt (Speedrun Timer) - but only the ones you actually installed will be present.
-
-Run the uninstallers for any utility listed after this one, then run this one again."
+if ($sectionIsLast) {
+    $previousSection = $pe.Sections | Where-Object { $_.Index -eq ($section.Index - 1) } | Select-Object -First 1
+    $restoredSizeOfImage = Align-Value ([uint32]($previousSection.Rva + [Math]::Max($previousSection.VirtualSize, $previousSection.RawSize))) ([uint32]$pe.SectionAlignment)
 }
-
-$previousSection = $pe.Sections | Where-Object { $_.Index -eq ($section.Index - 1) } | Select-Object -First 1
-$restoredFileSize = [int]$section.RawOffset
-$restoredSizeOfImage = Align-Value ([uint32]($previousSection.Rva + [Math]::Max($previousSection.VirtualSize, $previousSection.RawSize))) ([uint32]$pe.SectionAlignment)
 
 if ($DryRun) {
     if ($sliderIsPatched) {
@@ -364,13 +374,18 @@ if ($DryRun) {
     if ($optionsSaveOldPatched -or $optionsRestoreOldPatched) {
         Write-Host "MajestyHD.exe: would restore old runtime-options/audio hooks."
     }
-    Write-Host ("MajestyHD.exe: would remove .mskp section header at file offset 0x{0:X}." -f $section.HeaderOffset)
-    Write-Host ("MajestyHD.exe: would truncate appended .mskp data back to file offset 0x{0:X}." -f $restoredFileSize)
+    if ($sectionIsLast) {
+        Write-Host ("MajestyHD.exe: would remove .mskp section header at file offset 0x{0:X}." -f $section.HeaderOffset)
+        Write-Host ("MajestyHD.exe: would truncate appended .mskp data back to file offset 0x{0:X}." -f $section.RawOffset)
+    } else {
+        Write-Host "MajestyHD.exe: would leave an inert .mskp section for safe reuse because later sections retain their current addresses."
+    }
     return
 }
 
 Assert-FileWritable $exePath
 
+$restoredFileSize = if ($sectionIsLast) { [int]$section.RawOffset } else { $bytes.Length }
 $restoredBytes = New-Object byte[] $restoredFileSize
 [Array]::Copy($bytes, 0, $restoredBytes, 0, $restoredFileSize)
 
@@ -411,9 +426,13 @@ if ($optionsRestoreOldPatched) {
     Write-Bytes $restoredBytes $OldOptionsRestoreOffset $OriginalOptionsRestoreBytes
 }
 
-[BitConverter]::GetBytes([uint16]($pe.SectionCount - 1)).CopyTo($restoredBytes, $pe.SectionCountOffset)
-[BitConverter]::GetBytes([uint32]$restoredSizeOfImage).CopyTo($restoredBytes, $pe.SizeOfImageOffset)
-Write-Bytes $restoredBytes $section.HeaderOffset (New-Object byte[] 40)
+if ($sectionIsLast) {
+    [BitConverter]::GetBytes([uint16]($pe.SectionCount - 1)).CopyTo($restoredBytes, $pe.SectionCountOffset)
+    [BitConverter]::GetBytes([uint32]$restoredSizeOfImage).CopyTo($restoredBytes, $pe.SizeOfImageOffset)
+    Write-Bytes $restoredBytes $section.HeaderOffset (New-Object byte[] 40)
+} else {
+    Write-Bytes $restoredBytes $section.RawOffset (New-Object byte[] $PatchRawSize)
+}
 
 [IO.File]::WriteAllBytes($exePath, $restoredBytes)
 

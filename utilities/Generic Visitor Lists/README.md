@@ -80,8 +80,10 @@ refuses unknown data instead of overwriting it. Its static ranges do not
 overlap the other Majesty Gold HD QoL Utilities patches. Its relocatable
 `.mgvl` section is appended after any existing patch sections.
 
-When using the QoL Utilities bundle, install Generic Visitor Lists last and
-uninstall it first. The bundle scripts enforce that order automatically.
+Generic Visitor Lists can be installed or uninstalled independently in any
+order. If another patch section follows `.mgvl`, uninstall restores every hook
+immediately and leaves only inert reserved storage that a later reinstall can
+reuse safely.
 
 ## Required monster-icon resources
 

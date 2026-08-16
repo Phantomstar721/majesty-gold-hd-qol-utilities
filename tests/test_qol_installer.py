@@ -42,8 +42,8 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue(installer.utility_script(utility.install_script).is_file(), utility.name)
             self.assertTrue(installer.utility_script(utility.uninstall_script).is_file(), utility.name)
 
-    def test_generic_visitor_lists_is_last_for_safe_section_order(self):
-        self.assertEqual(installer.UTILITIES[-1].key, "generic-visitors")
+    def test_generic_visitor_lists_is_available(self):
+        self.assertEqual(installer.utility_by_key("generic-visitors").name, "Generic Visitor Lists")
 
     @mock.patch("qol_installer.subprocess.run")
     def test_detection_recognizes_installed_phrase(self, run):

@@ -56,6 +56,9 @@ When combining this with other utilities that append executable sections, the
 installer derives its placement from the current executable and relocates its
 engine calls accordingly. Re-running it on a compatible multi-patch executable
 is safe; it validates its own section without disturbing later sections.
+It can also be uninstalled in any order: hooks are restored immediately, while
+private storage is retained inert only when a later section must keep its
+current address. Reinstalling safely reuses that storage.
 
 If you used a release from before the active-mod commit fix, run the current
 installer again. It updates an existing `.mpst` section in place, including one
