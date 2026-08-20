@@ -2,8 +2,8 @@
 
 A small local patcher for the Steam version of **Majesty Gold HD**.
 
-Supported Steam branches are the default public build (`1.5.2.24`) and the
-`beta2` Steam Multiplayer Support build (`1.5.2.28`).
+The installer detects and supports both Steam branches: the Default Public
+build (`1.5.2.24`) and `beta2` Steam Multiplayer Support (`1.5.2.28`).
 
 Majesty resets the in-quest camera zoom whenever a new quest starts. This patch
 remembers the last zoom level used by the zoom button near the minimap and
