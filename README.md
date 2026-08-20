@@ -4,6 +4,11 @@ A single Windows app for installing the Majesty Gold HD quality-of-life utilitie
 Each improvement can be installed or removed on its own, or you can use **Install
 All** and **Uninstall All**.
 
+The app supports both Steam game builds:
+
+- **Default Public Version** (`1.5.2.24`)
+- **beta2 / Steam Multiplayer Support** (`1.5.2.28`)
+
 ## Use it
 
 1. Close Majesty Gold HD.
@@ -14,7 +19,10 @@ All** and **Uninstall All**.
 
 The app finds the game in your Steam libraries, including libraries on other
 drives. Use **Choose EXE** if you want to patch a different Majesty installation.
-It checks that installation and marks utilities it recognizes as **Installed**.
+It identifies which supported game build is selected, displays that version,
+and marks utilities it recognizes as **Installed**. Build detection continues
+to work after QoL patch sections have been added; an unknown executable is
+reported before any executable-patching utility can run.
 Use the **Full Patch Details** link in the app footer to open this GitHub page
 for implementation notes, source code, and individual utility documentation.
 
@@ -22,6 +30,12 @@ Every bundled utility can be installed or removed independently in any order.
 When a later patch section prevents safe physical truncation, uninstalling
 still restores all behavior immediately and leaves only inert private storage
 that the same utility can reuse on a later install.
+
+If you switch between Steam's public and beta2 branches, reopen this app after
+Steam finishes updating and install the utilities for the newly selected build.
+The executable patches use separate guarded address profiles, and UIData
+originals are kept build-specific so one branch is never restored over the
+other.
 
 The download contains no game files. It applies small, version-checked changes
 to the copy of Majesty Gold HD you already own. Windows may show a SmartScreen
@@ -67,10 +81,11 @@ row and does not alter the unit, its XP reward, or gameplay. Custom monsters
 participate automatically when they define a positive stock-style
 `<Experience>` value.
 
-## If the app reports unexpected or incompatible EXE data
+## If the app reports an unsupported build or unexpected EXE data
 
-First remove any unrelated Majesty EXE patches you installed separately. If you
-need a guaranteed stock executable, let Steam refresh it:
+Confirm Steam is set to either **Default Public Version** or **beta2**, then
+remove any unrelated Majesty EXE patches you installed separately. If you need
+a guaranteed stock executable for the selected branch, let Steam refresh it:
 
 1. Open your Steam Library and right-click **Majesty Gold HD**.
 2. Choose **Properties > Installed Files**.

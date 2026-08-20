@@ -75,10 +75,18 @@ keeps the stock level-column value instead.
 
 ## Compatibility
 
-The installer guards every changed byte for the Steam 1.5.2.24 executable and
-refuses unknown data instead of overwriting it. Its static ranges do not
-overlap the other Majesty Gold HD QoL Utilities patches. Its relocatable
-`.mgvl` section is appended after any existing patch sections.
+The installer recognizes and guards both supported Steam executables:
+
+- **Default Public Version** (`1.5.2.24`)
+- **beta2 / Steam Multiplayer Support** (`1.5.2.28`)
+
+Build detection uses the original PE build timestamp and all four stock section
+layouts, so it remains reliable after other QoL sections have been appended.
+Every changed site is then checked against the selected build's exact stock or
+owned-patch bytes. Unknown builds and unexpected data are refused instead of
+overwritten. Static ranges do not overlap the other Majesty Gold HD QoL
+Utilities patches, and the relocatable `.mgvl` section is appended after any
+existing patch sections.
 
 Generic Visitor Lists can be installed or uninstalled independently in any
 order. If another patch section follows `.mgvl`, uninstall restores every hook

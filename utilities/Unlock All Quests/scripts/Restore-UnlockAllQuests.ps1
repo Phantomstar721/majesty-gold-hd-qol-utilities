@@ -6,27 +6,66 @@ param(
 $ErrorActionPreference = "Stop"
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
-$CaveOffset = 0x33432A
-$CaveSize = 0xD6
-$EligibilityHookOffset = 0x11BC40
-$DispatchHookOffset = 0x7A0EE
-$ResetRefreshHookOffset = 0x7A278
-$VisibilityImmediateOffset = 0x79AED
 
-[byte[]]$EligibilityOriginal = @(0x6A, 0xFF, 0x68, 0x38, 0x33, 0x70, 0x00)
-[byte[]]$EligibilityHook = @(0xE9, 0xE5, 0x86, 0x21, 0x00, 0x90, 0x90)
-[byte[]]$DispatchOriginal = @(0x81, 0xFB, 0x8A, 0x13, 0x00, 0x00)
-[byte[]]$DispatchHook = @(0xE9, 0x4F, 0xA2, 0x2B, 0x00, 0x90)
-[byte[]]$ResetRefreshOriginal = @(0x33, 0xF6, 0x39, 0x9C, 0x24, 0xB4, 0x00, 0x00, 0x00)
-[byte[]]$ResetRefreshHook = @(0xE9, 0xFD, 0xA0, 0x2B, 0x00, 0x90, 0x90, 0x90, 0x90)
+function Get-UnlockAllQuestsProfiles {
+    return @(
+        [pscustomobject]@{
+            Id = "public"
+            DisplayName = "Default Public (1.5.2.24)"
+            BuildSignatureOffset = 0x795D0
+            BuildSignatureBytes = [byte[]]@(0x6A,0xFF,0x68,0xC8,0xD1,0x6E,0x00,0x64,0xA1,0x00,0x00,0x00,0x00,0x50,0x83,0xEC,0x24,0x53,0x55,0x56,0x57)
+            CaveOffset = 0x33432A
+            CaveSize = 0xD6
+            EligibilityHookOffset = 0x11BC40
+            DispatchHookOffset = 0x7A0EE
+            ResetRefreshHookOffset = 0x7A278
+            VisibilityImmediateOffset = 0x79AED
+            EligibilityOriginal = [byte[]]@(0x6A,0xFF,0x68,0x38,0x33,0x70,0x00)
+            EligibilityHook = [byte[]]@(0xE9,0xE5,0x86,0x21,0x00,0x90,0x90)
+            DispatchOriginal = [byte[]]@(0x81,0xFB,0x8A,0x13,0x00,0x00)
+            DispatchHook = [byte[]]@(0xE9,0x4F,0xA2,0x2B,0x00,0x90)
+            ResetRefreshOriginal = [byte[]]@(0x33,0xF6,0x39,0x9C,0x24,0xB4,0x00,0x00,0x00)
+            ResetRefreshHook = [byte[]]@(0xE9,0xFD,0xA0,0x2B,0x00,0x90,0x90,0x90,0x90)
+            PatchBlobBase64 = "oPQlfACEwHQDwgQAav9oODNwAOkFed7/ZoH7mgJ1GYgd9CV8AGBqAIn56HdS1P+DxARh6RNc1P+B+4oTAADph13U/wAAAAAAAAAAAAAAAABgMcCi9CV8AGoAifnoRVLU/4PEBGEx9jmcJLQAAADp5F7U/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        },
+        [pscustomobject]@{
+            Id = "beta2"
+            DisplayName = "beta2 Steam Multiplayer Support (1.5.2.28)"
+            BuildSignatureOffset = 0x77D80
+            BuildSignatureBytes = [byte[]]@(0x6A,0xFF,0x68,0x98,0x26,0x70,0x00,0x64,0xA1,0x00,0x00,0x00,0x00,0x50,0x83,0xEC,0x24,0x53,0x55,0x56,0x57)
+            CaveOffset = 0x34C6BD
+            CaveSize = 0xD6
+            EligibilityHookOffset = 0x12C190
+            DispatchHookOffset = 0x789C9
+            ResetRefreshHookOffset = 0x78B54
+            VisibilityImmediateOffset = 0x7829D
+            EligibilityOriginal = [byte[]]@(0x6A,0xFF,0x68,0xD8,0xB5,0x71,0x00)
+            EligibilityHook = [byte[]]@(0xE9,0x28,0x05,0x22,0x00,0x90,0x90)
+            DispatchOriginal = [byte[]]@(0x81,0xFB,0x8A,0x13,0x00,0x00)
+            DispatchHook = [byte[]]@(0xE9,0x07,0x3D,0x2D,0x00,0x90)
+            ResetRefreshOriginal = [byte[]]@(0x33,0xF6,0x39,0x9C,0x24,0xB8,0x00,0x00,0x00)
+            ResetRefreshHook = [byte[]]@(0xE9,0xB4,0x3B,0x2D,0x00,0x90,0x90,0x90,0x90)
+            PatchBlobBase64 = "oGQRfgCEwHQDwgQAav9o2LVxAOnC+t3/ZoH7mgJ1GYgdZBF+AGBqAIn56JS20v+DxARh6UTA0v+B+4oTAADpz8LS/wAAAAAAAAAAAAAAAABgMcCiZBF+AGoAifnoYrbS/4PEBGEx9jmcJLgAAADpLcTS/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+    )
+}
+
+function Get-MajestyBuildProfile {
+    param([byte[]]$Bytes)
+    $matches = @(Get-UnlockAllQuestsProfiles | Where-Object {
+        Test-BytesEqual $Bytes $_.BuildSignatureOffset $_.BuildSignatureBytes
+    })
+    if ($matches.Count -ne 1) {
+        throw "MajestyHD.exe is not a supported stock Steam build. Supported builds: Default Public 1.5.2.24 and beta2 1.5.2.28."
+    }
+    return $matches[0]
+}
 
 function Get-PatchBlob {
-    # Must stay byte-identical to Get-PatchBlob in Install-UnlockAllQuests.ps1.
-    # The uninstaller only clears the cave when it matches this exactly, so a
-    # drifted copy makes uninstalling refuse rather than corrupt anything.
-    return [Convert]::FromBase64String(
-        "oPQlfACEwHQDwgQAav9oODNwAOkFed7/ZoH7mgJ1GYgd9CV8AGBqAIn56HdS1P+DxARh6RNc1P+B+4oTAADph13U/wAAAAAAAAAAAAAAAABgMcCi9CV8AGoAifnoRVLU/4PEBGEx9jmcJLQAAADp5F7U/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
-    )
+    param($Profile)
+    # Must stay byte-identical to the matching installer profile. A mismatch
+    # makes uninstall refuse rather than clear bytes it does not own.
+    return [Convert]::FromBase64String($Profile.PatchBlobBase64)
 }
 
 function Test-BytesEqual {
@@ -188,7 +227,20 @@ $exePath = Join-Path $resolvedGamePath "MajestyHD.exe"
 if (-not (Test-Path -LiteralPath $exePath)) { throw "Could not find MajestyHD.exe at $exePath." }
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
-[byte[]]$patchBlob = Get-PatchBlob
+$profile = Get-MajestyBuildProfile $bytes
+$CaveOffset = [int]$profile.CaveOffset
+$CaveSize = [int]$profile.CaveSize
+$EligibilityHookOffset = [int]$profile.EligibilityHookOffset
+$DispatchHookOffset = [int]$profile.DispatchHookOffset
+$ResetRefreshHookOffset = [int]$profile.ResetRefreshHookOffset
+$VisibilityImmediateOffset = [int]$profile.VisibilityImmediateOffset
+[byte[]]$EligibilityOriginal = $profile.EligibilityOriginal
+[byte[]]$EligibilityHook = $profile.EligibilityHook
+[byte[]]$DispatchOriginal = $profile.DispatchOriginal
+[byte[]]$DispatchHook = $profile.DispatchHook
+[byte[]]$ResetRefreshOriginal = $profile.ResetRefreshOriginal
+[byte[]]$ResetRefreshHook = $profile.ResetRefreshHook
+[byte[]]$patchBlob = Get-PatchBlob $profile
 
 $eligibilityStock = Test-BytesEqual $bytes $EligibilityHookOffset $EligibilityOriginal
 $eligibilityPatched = Test-BytesEqual $bytes $EligibilityHookOffset $EligibilityHook
@@ -209,6 +261,7 @@ $exePatched = $eligibilityPatched -and $dispatchPatched -and $resetPatched -and 
 
 Write-Host "Majesty Gold HD Unlock All Quests restore"
 Write-Host "Game path: $resolvedGamePath"
+Write-Host "Game build: $($profile.DisplayName)"
 if ($DryRun) { Write-Host "Dry run: no files will be changed." }
 Write-Host ""
 

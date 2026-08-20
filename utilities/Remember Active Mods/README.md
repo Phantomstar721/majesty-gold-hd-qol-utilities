@@ -2,6 +2,10 @@
 
 A small Windows patcher for the Steam version of **Majesty Gold HD**.
 
+Supported Steam branches are the default public build (`1.5.2.24`) and the
+`beta2` Steam Multiplayer Support build (`1.5.2.28`). The installer identifies
+the executable before selecting any offsets; an unknown build is left untouched.
+
 Majesty Gold HD normally forgets which mods you activated when you close the
 game. This patch remembers the mods in the in-game **Mods > Active** list and
 puts them back automatically the next time Majesty starts.
@@ -56,6 +60,9 @@ When combining this with other utilities that append executable sections, the
 installer derives its placement from the current executable and relocates its
 engine calls accordingly. Re-running it on a compatible multi-patch executable
 is safe; it validates its own section without disturbing later sections.
+On beta2 it also keeps the restore routine's temporary parsing arena inside the
+private writable section because the public build's scratch addresses are
+read-only in beta2; no game-owned list state moves.
 It can also be uninstalled in any order: hooks are restored immediately, while
 private storage is retained inert only when a later section must keep its
 current address. Reinstalling safely reuses that storage.
@@ -63,6 +70,9 @@ current address. Reinstalling safely reuses that storage.
 If you used a release from before the active-mod commit fix, run the current
 installer again. It updates an existing `.mpst` section in place, including one
 left inert by the uninstaller.
+
+The stock lifecycle and the public-to-beta2 relocation trace are documented in
+[`docs/STOCK-LIFECYCLE.md`](docs/STOCK-LIFECYCLE.md).
 
 ## Steam Workshop Note
 

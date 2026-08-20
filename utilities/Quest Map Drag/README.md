@@ -5,6 +5,15 @@ A small Windows patcher for the Steam version of **Majesty Gold HD**.
 It lets you hold the left mouse button on the quest selection map and drag to
 pan. The game's stock edge-scroll dimensions are left unchanged.
 
+## Supported game versions
+
+The installer detects and supports both Steam branches:
+
+- **Default Public** (`MajestyHD.exe` 1.5.2.24)
+- **beta2 - Steam Multiplayer Support** (`MajestyHD.exe` 1.5.2.28)
+
+It validates the selected build's exact hook and code-cave bytes before writing.
+
 ## Install
 
 1. Close Majesty Gold HD.
@@ -63,3 +72,6 @@ For a guaranteed unmodified executable, let Steam do it:
 
 Steam will replace `MajestyHD.exe` with the original. You can then reinstall
 whichever utilities you want.
+
+The verified stock lifecycle and address mapping for both builds are documented
+in [`docs/STOCK-TRACE.md`](docs/STOCK-TRACE.md).

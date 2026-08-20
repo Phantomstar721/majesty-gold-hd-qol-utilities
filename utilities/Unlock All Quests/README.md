@@ -9,6 +9,13 @@ The stock **ERASE VICTORIES** / Reset Quests confirmation and victory reset rema
 intact. Confirming that reset also turns off the session unlock and restores the
 normal quest locks and purple-cloud overlays immediately.
 
+## Supported game versions
+
+The installer detects and supports both Steam branches:
+
+- **Default Public** (`MajestyHD.exe` 1.5.2.24)
+- **beta2 - Steam Multiplayer Support** (`MajestyHD.exe` 1.5.2.28)
+
 ## Install
 
 1. Close Majesty Gold HD.
@@ -99,3 +106,6 @@ For a guaranteed unmodified executable, let Steam do it:
 
 Steam will replace `MajestyHD.exe` with the original. You can then reinstall
 whichever utilities you want.
+
+The verified construction, dispatch, reset, cleanup, refresh, cave, and address
+trace for both builds is in [`docs/STOCK-TRACE.md`](docs/STOCK-TRACE.md).

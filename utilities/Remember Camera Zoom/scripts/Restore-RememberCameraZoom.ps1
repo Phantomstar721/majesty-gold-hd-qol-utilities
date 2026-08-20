@@ -4,19 +4,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "MajestyBuildProfiles.ps1")
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $PatchSectionName = ".mczp"
 $PatchRawSize = 0x1000
-
-$ZoomConstructorCallVa = 0x5DDCC6
-$ZoomConstructorCallOffset = 0x1DD0C6
-$ZoomVtableEntryOffset = 0x348688
-$ZoomRuntimeVtableEntryOffset = 0x33AC10
-
-$OriginalConstructorCallBytes = [byte[]]@(0xE8, 0x45, 0xFC, 0xFF, 0xFF)
-$OriginalVtableEntryBytes = [byte[]]@(0x10, 0xD9, 0x5D, 0x00)
-$OriginalRuntimeVtableEntryBytes = [byte[]]@(0x10, 0xD9, 0x5D, 0x00)
 
 function Read-U16 {
     param([byte[]]$Bytes, [int]$Offset)
@@ -228,10 +220,19 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
 $pe = Get-PeInfo $bytes
+$build = Get-MajestyBuildProfile -Bytes $bytes -Pe $pe
+$ZoomConstructorCallVa = $build.ZoomConstructorCallVa
+$ZoomConstructorCallOffset = $build.ZoomConstructorCallOffset
+$ZoomVtableEntryOffset = $build.ZoomVtableEntryOffset
+$ZoomRuntimeVtableEntryOffset = $build.ZoomRuntimeVtableEntryOffset
+$OriginalConstructorCallBytes = $build.OriginalConstructorCallBytes
+$OriginalVtableEntryBytes = $build.OriginalVtableEntryBytes
+$OriginalRuntimeVtableEntryBytes = $build.OriginalRuntimeVtableEntryBytes
 $section = $pe.Sections | Where-Object { $_.Name -eq $PatchSectionName } | Select-Object -First 1
 
 Write-Host "Majesty Gold HD Remember Camera Zoom restore"
 Write-Host "Game path: $resolvedGamePath"
+Write-Host "Detected build: $($build.DisplayName)"
 if ($DryRun) {
     Write-Host "Dry run: no files will be changed."
 }
@@ -249,13 +250,29 @@ $vtableEntry = [BitConverter]::GetBytes([uint32]$patchVa)
 $constructorIsPatched = Test-BytesEqual $bytes $ZoomConstructorCallOffset $constructorHook
 $vtableIsPatched = Test-BytesEqual $bytes $ZoomVtableEntryOffset $vtableEntry
 $runtimeVtableIsPatched = Test-BytesEqual $bytes $ZoomRuntimeVtableEntryOffset $vtableEntry
+$constructorIsStock = Test-BytesEqual $bytes $ZoomConstructorCallOffset $OriginalConstructorCallBytes
+$vtableIsStock = Test-BytesEqual $bytes $ZoomVtableEntryOffset $OriginalVtableEntryBytes
+$runtimeVtableIsStock = Test-BytesEqual $bytes $ZoomRuntimeVtableEntryOffset $OriginalRuntimeVtableEntryBytes
 $sectionIsLast = ($section.Index -eq ($pe.SectionCount - 1)) -and
     ($bytes.Length -eq ($section.RawOffset + $PatchRawSize))
 $sectionIsInert = Test-ZeroRange $bytes $section.RawOffset $PatchRawSize
-$hasInstalledHooks = $constructorIsPatched -or $vtableIsPatched -or $runtimeVtableIsPatched
 
+# An interrupted install can leave a safe mix of exact stock bytes and exact
+# utility-owned hooks. Classify every site before any write or truncation; an
+# OR across patched sites alone would let one unknown hook escape validation.
+if (-not ($constructorIsStock -or $constructorIsPatched)) {
+    throw ("MajestyHD.exe has unexpected bytes at the camera constructor hook 0x{0:X}. No game files were changed." -f $ZoomConstructorCallOffset)
+}
+if (-not ($vtableIsStock -or $vtableIsPatched)) {
+    throw ("MajestyHD.exe has unexpected bytes at the camera zoom vtable entry 0x{0:X}. No game files were changed." -f $ZoomVtableEntryOffset)
+}
+if (-not ($runtimeVtableIsStock -or $runtimeVtableIsPatched)) {
+    throw ("MajestyHD.exe has unexpected bytes at the runtime camera zoom vtable entry 0x{0:X}. No game files were changed." -f $ZoomRuntimeVtableEntryOffset)
+}
+
+$hasInstalledHooks = $constructorIsPatched -or $vtableIsPatched -or $runtimeVtableIsPatched
 if (-not $hasInstalledHooks -and -not $sectionIsInert) {
-    throw "The .mczp section is active, but no complete Remember Camera Zoom hook set was recognized."
+    throw "The .mczp section is active, but no Remember Camera Zoom hooks are installed. No game files were changed."
 }
 if (-not $hasInstalledHooks -and -not $sectionIsLast) {
     Write-Host "MajestyHD.exe: Remember Camera Zoom is already uninstalled; its inert private section is reserved for safe reuse."

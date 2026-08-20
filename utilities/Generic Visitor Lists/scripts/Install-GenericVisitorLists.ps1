@@ -4,6 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "MajestyBuildProfiles.ps1")
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_generic_visitor_lists_originals"
@@ -13,38 +14,10 @@ $PatchVirtualSize = 0xBA
 $PatchRawSize = 0x200
 $IconPayloadOffset = 0x80
 
-$GateOffset = 0x979D5
-$IconDispatchOffset = 0x97818
-$IconDispatchVa = 0x498418
-$ThreatDispatchOffset = 0x97AD1
-$ThreatDispatchVa = 0x4986D1
-$MonsterResolverOffset = 0xBA4A0
-$MonsterResolverVa = 0x4BB0A0
-$DisplayClassifierOffset = 0x107910
-$DisplayClassifierVa = 0x508510
-$AttributeGetterOffset = 0x1B93D0
-$AttributeGetterVa = 0x5B9FD0
-$IconHeroResumeVa = 0x498421
-$IconMonsterResumeVa = 0x49847D
-
 [byte[]]$OriginalGateBytes = @(0x0F, 0x85, 0xB6, 0x04, 0x00, 0x00)
 [byte[]]$PatchedGateBytes = @(0x0F, 0x85, 0xCA, 0x00, 0x00, 0x00)
 [byte[]]$OriginalIconDispatchBytes = @(0x6A, 0x01, 0x8D, 0x8C, 0x24, 0xC4, 0x00, 0x00, 0x00)
 [byte[]]$LegacyIconDispatchBytes = @(0xE9, 0x80, 0xCB, 0x29, 0x00, 0x90, 0x90, 0x90, 0x90)
-[byte[]]$OriginalThreatDispatchBytes = @(0xE8, 0xFA, 0x18, 0x12, 0x00)
-[byte[]]$MonsterResolverSignature = @(
-    0x53, 0x55, 0x56, 0x8B, 0x74, 0x24, 0x10, 0x57,
-    0x6A, 0x01, 0x8B, 0xCE, 0xE8, 0x8F, 0x72, 0x1B,
-    0x00, 0x68, 0x49, 0x58, 0x39, 0x32
-)
-[byte[]]$DisplayClassifierSignature = @(
-    0x6A, 0xFF, 0x68, 0x34, 0x07, 0x70, 0x00, 0x64,
-    0xA1, 0x00, 0x00, 0x00, 0x00, 0x50, 0x83, 0xEC
-)
-[byte[]]$AttributeGetterSignature = @(
-    0x8B, 0x54, 0x24, 0x04, 0x8D, 0x44, 0x24, 0x04,
-    0x50, 0x52, 0x83, 0xC1, 0x04, 0xE8, 0x9E, 0x98
-)
 [byte[]]$LegacyIconPayload = @(
     0x57, 0xE8, 0x6D, 0x35, 0xDD, 0xFF, 0x83, 0xC4, 0x04, 0x83, 0xF8, 0x01, 0x74, 0x1E,
     0x83, 0xF8, 0x02, 0x74, 0x19, 0x8B, 0x47, 0x28, 0x50, 0x8D, 0x84, 0x24, 0xC4, 0x00,
@@ -270,6 +243,66 @@ $exePath = Join-Path $resolvedGamePath "MajestyHD.exe"
 if (-not (Test-Path -LiteralPath $exePath)) { throw "Could not find MajestyHD.exe at $exePath." }
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
+$buildProfile = Get-MajestyBuildProfile $bytes
+if ($buildProfile.Key -eq "public") {
+    $GateOffset = 0x979D5
+    $IconDispatchOffset = 0x97818
+    $IconDispatchVa = 0x498418
+    $ThreatDispatchOffset = 0x97AD1
+    $ThreatDispatchVa = 0x4986D1
+    $MonsterResolverOffset = 0xBA4A0
+    $MonsterResolverVa = 0x4BB0A0
+    $DisplayClassifierOffset = 0x107910
+    $DisplayClassifierVa = 0x508510
+    $AttributeGetterOffset = 0x1B93D0
+    $AttributeGetterVa = 0x5B9FD0
+    $IconHeroResumeVa = 0x498421
+    $IconMonsterResumeVa = 0x49847D
+    [byte[]]$OriginalThreatDispatchBytes = @(0xE8, 0xFA, 0x18, 0x12, 0x00)
+    [byte[]]$MonsterResolverSignature = @(
+        0x53, 0x55, 0x56, 0x8B, 0x74, 0x24, 0x10, 0x57,
+        0x6A, 0x01, 0x8B, 0xCE, 0xE8, 0x8F, 0x72, 0x1B,
+        0x00, 0x68, 0x49, 0x58, 0x39, 0x32
+    )
+    [byte[]]$DisplayClassifierSignature = @(
+        0x6A, 0xFF, 0x68, 0x34, 0x07, 0x70, 0x00, 0x64,
+        0xA1, 0x00, 0x00, 0x00, 0x00, 0x50, 0x83, 0xEC
+    )
+    [byte[]]$AttributeGetterSignature = @(
+        0x8B, 0x54, 0x24, 0x04, 0x8D, 0x44, 0x24, 0x04,
+        0x50, 0x52, 0x83, 0xC1, 0x04, 0xE8, 0x9E, 0x98
+    )
+    $supportsLegacyPatch = $true
+} else {
+    $GateOffset = 0x98005
+    $IconDispatchOffset = 0x97E48
+    $IconDispatchVa = 0x498A48
+    $ThreatDispatchOffset = 0x98101
+    $ThreatDispatchVa = 0x498D01
+    $MonsterResolverOffset = 0xBAEE0
+    $MonsterResolverVa = 0x4BBAE0
+    $DisplayClassifierOffset = 0x109AE0
+    $DisplayClassifierVa = 0x50A6E0
+    $AttributeGetterOffset = 0x1CE370
+    $AttributeGetterVa = 0x5CEF70
+    $IconHeroResumeVa = 0x498A51
+    $IconMonsterResumeVa = 0x498AAD
+    [byte[]]$OriginalThreatDispatchBytes = @(0xE8, 0x6A, 0x62, 0x13, 0x00)
+    [byte[]]$MonsterResolverSignature = @(
+        0x53, 0x55, 0x56, 0x8B, 0x74, 0x24, 0x10, 0x57,
+        0x6A, 0x01, 0x8B, 0xCE, 0xE8, 0xAF, 0xBC, 0x1C,
+        0x00, 0x68, 0x49, 0x58, 0x39, 0x32
+    )
+    [byte[]]$DisplayClassifierSignature = @(
+        0x6A, 0xFF, 0x68, 0x64, 0x61, 0x71, 0x00, 0x64,
+        0xA1, 0x00, 0x00, 0x00, 0x00, 0x50, 0x83, 0xEC
+    )
+    [byte[]]$AttributeGetterSignature = @(
+        0x8B, 0x54, 0x24, 0x04, 0x8D, 0x44, 0x24, 0x04,
+        0x50, 0x52, 0x83, 0xC1, 0x04, 0xE8, 0x5E, 0x9D
+    )
+    $supportsLegacyPatch = $false
+}
 $pe = Get-PeInfo $bytes
 $existingSection = $pe.Sections | Where-Object Name -eq $SectionName | Select-Object -First 1
 
@@ -302,14 +335,14 @@ $isGateStock = Test-BytesEqual $bytes $GateOffset $OriginalGateBytes
 $isGatePatched = Test-BytesEqual $bytes $GateOffset $PatchedGateBytes
 $isIconStock = Test-BytesEqual $bytes $IconDispatchOffset $OriginalIconDispatchBytes
 $isIconPatched = Test-BytesEqual $bytes $IconDispatchOffset $patchedIconDispatch
-$isLegacyIconPatched = (Test-BytesEqual $bytes $IconDispatchOffset $LegacyIconDispatchBytes) -and
+$isLegacyIconPatched = $supportsLegacyPatch -and (Test-BytesEqual $bytes $IconDispatchOffset $LegacyIconDispatchBytes) -and
     (Test-BytesEqual $bytes $LegacyIconCodeCaveOffset $LegacyIconPayload)
 $isThreatStock = Test-BytesEqual $bytes $ThreatDispatchOffset $OriginalThreatDispatchBytes
 $isThreatPatched = Test-BytesEqual $bytes $ThreatDispatchOffset $patchedThreatDispatch
 $headerPatched = [bool]$existingSection -and (Test-BytesEqual $bytes $patchHeaderOffset $patchHeader)
-$legacyHeaderPatched = [bool]$existingSection -and (Test-BytesEqual $bytes $patchHeaderOffset $legacyPatchHeader)
+$legacyHeaderPatched = $supportsLegacyPatch -and [bool]$existingSection -and (Test-BytesEqual $bytes $patchHeaderOffset $legacyPatchHeader)
 $blobPatched = [bool]$existingSection -and (Test-BytesEqual $bytes $patchRawOffset $patchBlob)
-$legacyBlobPatched = [bool]$existingSection -and (Test-BytesEqual $bytes $patchRawOffset $legacyPatchBlob)
+$legacyBlobPatched = $supportsLegacyPatch -and [bool]$existingSection -and (Test-BytesEqual $bytes $patchRawOffset $legacyPatchBlob)
 $blobEmpty = [bool]$existingSection -and (Test-ZeroRange $bytes $patchRawOffset $PatchRawSize)
 
 if (-not $isGateStock -and -not $isGatePatched) { throw "Unexpected visitor-row category-gate bytes at 0x$($GateOffset.ToString('X'))." }
@@ -325,6 +358,7 @@ if (-not (Test-BytesEqual $bytes $AttributeGetterOffset $AttributeGetterSignatur
 
 Write-Host "Majesty Gold HD Generic Visitor Lists installer"
 Write-Host "Game path: $resolvedGamePath"
+Write-Host "Game build: $($buildProfile.Name)"
 if ($DryRun) { Write-Host "Dry run: no files will be changed." }
 Write-Host ""
 

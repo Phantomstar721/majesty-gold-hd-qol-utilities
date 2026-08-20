@@ -5,22 +5,27 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "NativePathEncoding.ps1")
+. (Join-Path $PSScriptRoot "MajestyBuildProfiles.ps1")
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_mod_persistence_originals"
 
-# PE section characteristics: code, execute, read. This utility keeps its state in .data, so its section does not need to be writable.
-$SectionCharacteristics = 1610612768  # 0x60000020: code, execute, read
-
 $SectionName = ".mpst"
-$LoadCallOffset = 0x77D30
-$LoadCallVa = 0x478930
-$SaveCallOffset = 0x124196
-$SaveCallVa = 0x524D96
-$ApplyActiveModsVa = 0x525540
 
 $PatchVirtualSize = 0x11AF
 $PatchRawSize = 0x1200
+
+# beta2 moved the public payload's old scratch addresses into its read-only
+# .rdata range. Keep the existing public payload byte-for-byte unchanged, but
+# give beta2's otherwise identical restore routine a private, writable arena.
+# The preference path can occupy at most 0x100 bytes at 0x600, so 0x700 is the
+# first non-overlapping byte. The 0x430-byte arena preserves the public layout:
+# a 0x400-byte input buffer followed by eleven sscanf outputs and one temporary
+# matched-node pointer.
+$PrivateScratchBlobOffset = 0x700
+$PrivateScratchBufferSize = 0x400
+$PrivateScratchDwordCount = 12
+$PrivateScratchArenaSize = $PrivateScratchBufferSize + ($PrivateScratchDwordCount * 4)
 
 # The patch blob is assembled with its own string addresses and calls to stock
 # Majesty routines baked in, assuming .mpst lands at 0x80E000. That is the
@@ -54,9 +59,6 @@ $BlobStringMoves = @(
     [pscustomobject]@{ From = 0x200; To = 0x200 }
 )
 $PreferencePathBlobOffset = 0x600
-
-[byte[]]$OriginalLoadCall = @(0xE8, 0xAB, 0xCA, 0x0A, 0x00)
-[byte[]]$OriginalSaveCall = @(0xE8, 0xA5, 0x07, 0x00, 0x00)
 
 function Save-PreInstallBackup {
     param(
@@ -170,7 +172,8 @@ function New-SectionHeader {
         [uint32]$VirtualSize,
         [uint32]$Rva,
         [uint32]$RawSize,
-        [uint32]$RawOffset
+        [uint32]$RawOffset,
+        [uint32]$Characteristics
     )
 
     $bytes = New-Object byte[] 40
@@ -179,14 +182,15 @@ function New-SectionHeader {
     [BitConverter]::GetBytes($Rva).CopyTo($bytes, 12)
     [BitConverter]::GetBytes($RawSize).CopyTo($bytes, 16)
     [BitConverter]::GetBytes($RawOffset).CopyTo($bytes, 20)
-    [BitConverter]::GetBytes([uint32]$SectionCharacteristics).CopyTo($bytes, 36)
+    [BitConverter]::GetBytes($Characteristics).CopyTo($bytes, 36)
     return $bytes
 }
 
 function New-PatchBlob {
     param(
         [uint32]$PatchVa,
-        [Parameter(Mandatory = $true)][byte[]]$PreferencePathBytes
+        [Parameter(Mandatory = $true)][byte[]]$PreferencePathBytes,
+        [bool]$UsePrivateScratchArena
     )
 
     $bytes = New-Object byte[] $PatchRawSize
@@ -312,9 +316,9 @@ function New-PatchBlob {
     # remain correct when another utility causes .mpst to land at a later VA.
     $externalCalls = @(
         [pscustomobject]@{ Offset = 0x000; Target = $ApplyActiveModsVa },
-        [pscustomobject]@{ Offset = 0x308; Target = 0x5253E0 },
-        [pscustomobject]@{ Offset = 0x4E8; Target = 0x522340 },
-        [pscustomobject]@{ Offset = 0x4F6; Target = 0x5223F0 }
+        [pscustomobject]@{ Offset = 0x308; Target = $ModsOkHandlerVa },
+        [pscustomobject]@{ Offset = 0x4E8; Target = $ActiveListInsertVa },
+        [pscustomobject]@{ Offset = 0x4F6; Target = $ActiveListCommitVa }
     )
     foreach ($externalCall in $externalCalls) {
         Set-Bytes $externalCall.Offset (
@@ -367,6 +371,61 @@ function New-PatchBlob {
     }
     foreach ($relocation in $relocations) {
         [BitConverter]::GetBytes($relocation.Value).CopyTo($bytes, $relocation.Offset)
+    }
+
+    # The payload is the public-build implementation, relocated to the exact
+    # stock owners/imports in the selected build. These are data and IAT
+    # operands, not a second implementation: the list traversal, canonical
+    # insertion calls, dirty flag, commit timing, and cleanup remain byte-for-
+    # byte the established mechanism.
+    $fixedAddressMoves = @(
+        [pscustomobject]@{ From = 0x7353E0; To = $FprintfIat; Count = 1 },
+        [pscustomobject]@{ From = 0x735430; To = $FopenIat; Count = 2 },
+        [pscustomobject]@{ From = 0x735434; To = $FreadIat; Count = 1 },
+        [pscustomobject]@{ From = 0x735444; To = $FcloseIat; Count = 2 },
+        [pscustomobject]@{ From = 0x73544C; To = $SscanfIat; Count = 1 },
+        [pscustomobject]@{ From = 0x7C1E30; To = $InstalledListVa; Count = 1 },
+        [pscustomobject]@{ From = 0x7C1E38; To = $ActiveListOwnerVa; Count = 2 },
+        [pscustomobject]@{ From = 0x7C1E4C; To = $ActiveListVa; Count = 3 },
+        [pscustomobject]@{ From = 0x7C1DFC; To = $ActiveListDirtyVa; Count = 1 }
+    )
+
+    if ($UsePrivateScratchArena) {
+        # The public payload owns a contiguous 0x430-byte temporary arena at
+        # 0x7BD900..0x7BDD2F. Those same VAs are read-only .rdata in beta2.
+        # Preserve the exact synchronous fread/NUL/sscanf/match lifecycle and
+        # relative layout, changing only the arena owner to writable .mpst.
+        $fixedAddressMoves += [pscustomobject]@{
+            From = 0x7BD900
+            To = [uint32]($PatchVa + $PrivateScratchBlobOffset)
+            Count = 3
+        }
+        for ($i = 0; $i -lt $PrivateScratchDwordCount; $i++) {
+            $fixedAddressMoves += [pscustomobject]@{
+                From = [uint32](0x7BDD00 + ($i * 4))
+                To = [uint32]($PatchVa + $PrivateScratchBlobOffset + $PrivateScratchBufferSize + ($i * 4))
+                Count = 2
+            }
+        }
+    }
+    foreach ($move in $fixedAddressMoves) {
+        $needle = [BitConverter]::GetBytes([uint32]$move.From)
+        $replacement = [BitConverter]::GetBytes([uint32]$move.To)
+        $found = 0
+        for ($i = 0; $i -le ($bytes.Length - 4); $i++) {
+            if ($bytes[$i] -eq $needle[0] -and $bytes[$i + 1] -eq $needle[1] -and
+                $bytes[$i + 2] -eq $needle[2] -and $bytes[$i + 3] -eq $needle[3]) {
+                $replacement.CopyTo($bytes, $i)
+                $found++
+                $i += 3
+            }
+        }
+        if ($found -ne $move.Count) {
+            throw (
+                "Mod persistence expected {0} payload reference(s) to stock address 0x{1:X}, found {2}." -f
+                $move.Count, $move.From, $found
+            )
+        }
     }
 
     return $bytes
@@ -539,6 +598,33 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
 $pe = Get-PeInfo $bytes
+$build = Get-MajestyBuildProfile -Bytes $bytes -Pe $pe
+$LoadCallOffset = $build.LoadCallOffset
+$LoadCallVa = $build.LoadCallVa
+$SaveCallOffset = $build.SaveCallOffset
+$SaveCallVa = $build.SaveCallVa
+$ApplyActiveModsVa = $build.ApplyActiveModsVa
+$ModsOkHandlerVa = $build.ModsOkHandlerVa
+$ActiveListInsertVa = $build.ActiveListInsertVa
+$ActiveListCommitVa = $build.ActiveListCommitVa
+$FprintfIat = $build.FprintfIat
+$FopenIat = $build.FopenIat
+$FreadIat = $build.FreadIat
+$FcloseIat = $build.FcloseIat
+$SscanfIat = $build.SscanfIat
+$InstalledListVa = $build.InstalledListVa
+$ActiveListOwnerVa = $build.ActiveListOwnerVa
+$ActiveListVa = $build.ActiveListVa
+$ActiveListDirtyVa = $build.ActiveListDirtyVa
+$OriginalLoadCall = $build.OriginalLoadCall
+$OriginalSaveCall = $build.OriginalSaveCall
+$SectionCharacteristics = $build.PatchSectionCharacteristics
+$UsePrivateScratchArena = [bool]$build.UsePrivateScratchArena
+
+if ($UsePrivateScratchArena -and
+    ($PrivateScratchBlobOffset + $PrivateScratchArenaSize) -gt $PatchVirtualSize) {
+    throw "The private beta2 scratch arena does not fit in .mpst. This is an installer bug; no game files were changed."
+}
 $existingSection = $pe.Sections | Where-Object { $_.Name -eq $SectionName } | Select-Object -First 1
 
 # Placement is derived from the PE header, so this utility no longer has to be
@@ -567,8 +653,8 @@ if ($existingSection) {
 
 $patchSectionVa = [uint32]($pe.ImageBase + $patchSectionRva)
 $patchedFileSize = [int]($patchSectionRawOffset + $PatchRawSize)
-$PatchSectionHeader = New-SectionHeader $SectionName $PatchVirtualSize $patchSectionRva $PatchRawSize $patchSectionRawOffset
-$patchBlob = New-PatchBlob $patchSectionVa $preferencePathBytes
+$PatchSectionHeader = New-SectionHeader $SectionName $PatchVirtualSize $patchSectionRva $PatchRawSize $patchSectionRawOffset $SectionCharacteristics
+$patchBlob = New-PatchBlob $patchSectionVa $preferencePathBytes $UsePrivateScratchArena
 [byte[]]$PatchedSaveCall = New-RelativeCallBytes $SaveCallVa $patchSectionVa
 [byte[]]$PatchedLoadCall = New-RelativeCallBytes $LoadCallVa ($patchSectionVa + 0x300)
 $newSizeOfImage = Align-Value ([uint32]($patchSectionRva + $PatchVirtualSize)) ([uint32]$pe.SectionAlignment)
@@ -593,6 +679,7 @@ if ($existingSection -and $bytes.Length -lt $patchedFileSize) {
 
 Write-Host "Majesty Gold HD Mod Persistence installer"
 Write-Host "Game path: $resolvedGamePath"
+Write-Host "Detected build: $($build.DisplayName)"
 Write-Host "Preset file: $preferencePath"
 Write-Host "Mode: remember Active mods across launches"
 if ($DryRun) {

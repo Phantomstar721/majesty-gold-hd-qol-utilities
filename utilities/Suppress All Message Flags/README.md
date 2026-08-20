@@ -28,8 +28,8 @@ This restores the stock message-flag behavior and leaves other QOL patches intac
 
 ## What It Changes
 
-This is a six-byte, version-guarded edit to `MajestyHD.exe`. The patched routine is
-the engine's message-flag constructor. In the stock executable that one routine:
+This is a six-byte, build-profiled edit to `MajestyHD.exe`. The patched routine is
+the engine's message-flag constructor. In each supported stock executable that one routine:
 
 - creates the `MSGF` object and its `ARE1` banner action;
 - plays the `ME02` / `EBE0` notification sound; and
@@ -43,8 +43,9 @@ the reverse-engineering evidence and boundaries.
 ## Compatibility
 
 This is a local executable patch, not a Steam Workshop mod. The patcher recognizes
-only the expected Steam Majesty Gold HD 1.5.2.24 bytes and its own patched bytes;
-it refuses to guess if another edit owns the same routine.
+the default Public Steam build (`1.5.2.24`) and `beta2` Multiplayer Support
+(`1.5.2.28`), plus its own six-byte state on either build. It refuses to guess
+if metadata, surrounding stock instructions, or target bytes do not agree.
 
 The patch changes no shared QOL hook or appended executable section, so install
 and uninstall order do not matter. The repo contains no Majesty game assets or

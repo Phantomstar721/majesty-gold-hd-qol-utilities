@@ -2,6 +2,9 @@
 
 A small local patcher for the Steam version of **Majesty Gold HD**.
 
+Supported Steam branches are the default public build (`1.5.2.24`) and the
+`beta2` Steam Multiplayer Support build (`1.5.2.28`).
+
 Majesty remembers volume settings between sessions, but it resets the in-quest
 game-speed slider whenever you launch the game again or start a new quest. This
 patch makes the speed slider behave like a saved preference.
@@ -61,10 +64,10 @@ This is an EXE patch, not a Steam Workshop mod.
 
 ## Compatibility
 
-This patch targets the Steam release of Majesty Gold HD tested during this
-project. If Steam updates `MajestyHD.exe`, run the installer again. The installer
-checks the bytes it plans to patch and stops if the executable is not in a known
-stock or already-patched state.
+The installer selects an explicit build profile from the executable's stock PE
+identity before checking any hook. Unknown builds are left untouched. The stock
+lifecycle and public-to-beta2 relocation trace are documented in
+[`docs/STOCK-LIFECYCLE.md`](docs/STOCK-LIFECYCLE.md).
 
 It can be installed or uninstalled independently of the other QoL patches in
 any order. When a later executable section must retain its address, uninstall

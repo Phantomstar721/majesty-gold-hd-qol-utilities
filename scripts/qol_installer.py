@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import re
+import struct
 import subprocess
 import sys
 from typing import Callable
@@ -25,6 +26,51 @@ class Utility:
     uninstall_script: str
     installed_phrase: str = ""
     preference_only: bool = False
+
+
+@dataclass(frozen=True)
+class StockSection:
+    name: str
+    virtual_size: int
+    rva: int
+    raw_size: int
+    raw_offset: int
+    characteristics: int
+
+
+@dataclass(frozen=True)
+class GameBuild:
+    key: str
+    name: str
+    version: str
+    coff_timestamp: int
+    sections: tuple[StockSection, ...]
+
+    @property
+    def display_name(self) -> str:
+        return f"{self.name} ({self.version})"
+
+
+SUPPORTED_GAME_BUILDS = (
+    GameBuild(
+        "public", "Default Public Version", "1.5.2.24", 0x5897B72F,
+        (
+            StockSection(".text", 0x333E7D, 0x001000, 0x334000, 0x000400, 0x60000020),
+            StockSection(".rdata", 0x07E88C, 0x335000, 0x07EA00, 0x334400, 0x40000040),
+            StockSection(".data", 0x05826C, 0x3B4000, 0x00C800, 0x3B2E00, 0xC0000040),
+            StockSection(".rsrc", 0x000F34, 0x40D000, 0x001000, 0x3BF600, 0x40000040),
+        ),
+    ),
+    GameBuild(
+        "beta2", "beta2 / Steam Multiplayer Support", "1.5.2.28", 0x5A8A11D5,
+        (
+            StockSection(".text", 0x34C20D, 0x001000, 0x34C400, 0x000400, 0x60000020),
+            StockSection(".rdata", 0x08395C, 0x34E000, 0x083A00, 0x34C800, 0x40000040),
+            StockSection(".data", 0x058DF4, 0x3D2000, 0x00D200, 0x3D0200, 0xC0000040),
+            StockSection(".rsrc", 0x000F34, 0x42B000, 0x001000, 0x3DD400, 0x40000040),
+        ),
+    ),
+)
 
 
 UTILITIES = (
@@ -61,6 +107,58 @@ def utility_script(relative: str) -> Path:
 
 def is_game_exe(path: Path) -> bool:
     return path.is_file() and path.name.lower() == "majestyhd.exe"
+
+
+def detect_game_build(path: Path) -> GameBuild | None:
+    """Identify either supported stock layout, including after QoL sections are appended."""
+    try:
+        data = path.read_bytes()
+        if len(data) < 0x400 or data[:2] != b"MZ":
+            return None
+        pe_offset = struct.unpack_from("<I", data, 0x3C)[0]
+        if pe_offset + 24 > len(data) or data[pe_offset:pe_offset + 4] != b"PE\0\0":
+            return None
+        machine, section_count = struct.unpack_from("<HH", data, pe_offset + 4)
+        timestamp = struct.unpack_from("<I", data, pe_offset + 8)[0]
+        optional_size = struct.unpack_from("<H", data, pe_offset + 20)[0]
+        optional_offset = pe_offset + 24
+        section_table = optional_offset + optional_size
+        if machine != 0x014C or section_count < 4 or optional_size != 0x00E0:
+            return None
+        if section_table + 160 > len(data):
+            return None
+        if struct.unpack_from("<H", data, optional_offset)[0] != 0x010B:
+            return None
+        if struct.unpack_from("<I", data, optional_offset + 28)[0] != 0x00400000:
+            return None
+        section_alignment, file_alignment = struct.unpack_from("<II", data, optional_offset + 32)
+        if section_alignment != 0x1000 or file_alignment != 0x0200:
+            return None
+        if struct.unpack_from("<I", data, optional_offset + 60)[0] != 0x0400:
+            return None
+        size_of_headers = 0x0400
+        if section_table + (section_count * 40) > size_of_headers:
+            return None
+        for index in range(section_count):
+            offset = section_table + (index * 40)
+            raw_size, raw_offset = struct.unpack_from("<II", data, offset + 16)
+            if raw_size and (raw_offset < size_of_headers or raw_offset + raw_size > len(data)):
+                return None
+
+        build = next((item for item in SUPPORTED_GAME_BUILDS if item.coff_timestamp == timestamp), None)
+        if build is None:
+            return None
+        for index, expected in enumerate(build.sections):
+            offset = section_table + (index * 40)
+            name = data[offset:offset + 8].rstrip(b"\0").decode("ascii")
+            virtual_size, rva, raw_size, raw_offset = struct.unpack_from("<IIII", data, offset + 8)
+            characteristics = struct.unpack_from("<I", data, offset + 36)[0]
+            actual = StockSection(name, virtual_size, rva, raw_size, raw_offset, characteristics)
+            if actual != expected:
+                return None
+        return build
+    except (OSError, UnicodeDecodeError, struct.error, ValueError):
+        return None
 
 
 def discover_game_exes() -> list[Path]:

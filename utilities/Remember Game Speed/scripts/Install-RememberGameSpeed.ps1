@@ -5,6 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "NativePathEncoding.ps1")
+. (Join-Path $PSScriptRoot "MajestyBuildProfiles.ps1")
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_remember_game_speed_originals"
@@ -15,46 +16,6 @@ $SectionCharacteristics = 3758096416  # 0xE0000020: code, execute, read, write
 $PatchSectionName = ".mskp"
 $PatchRawSize = 0x1000
 $PatchVirtualSize = 0x800
-
-$SpeedSliderSaveVa = 0x46AF18
-$SpeedSliderSaveOffset = 0x6A318
-$SpeedStepSlowerVa = 0x4644F3
-$SpeedStepSlowerOffset = 0x638F3
-$SpeedStepFasterVa = 0x464595
-$SpeedStepFasterOffset = 0x63995
-$SpeedRestoreOneVa = 0x4D90F9
-$SpeedRestoreOneOffset = 0xD84F9
-$SpeedRestoreTwoVa = 0x4D9B4A
-$SpeedRestoreTwoOffset = 0xD8F4A
-$SpeedCopyOneVa = 0x46A0C4
-$SpeedCopyOneOffset = 0x694C4
-$SpeedCopyTwoVa = 0x46A209
-$SpeedCopyTwoOffset = 0x69609
-$SpeedObjectInitOneVa = 0x484DD2
-$SpeedObjectInitOneOffset = 0x841D2
-$SpeedObjectInitTwoVa = 0x429006
-$SpeedObjectInitTwoOffset = 0x28406
-$SpeedObjectInitThreeVa = 0x429019
-$SpeedObjectInitThreeOffset = 0x28419
-
-$OldOptionsSaveVa = 0x4881F0
-$OldOptionsSaveOffset = 0x875F0
-$OldOptionsRestoreVa = 0x473A8D
-$OldOptionsRestoreOffset = 0x72E8D
-
-$OriginalSliderSaveBytes = [byte[]]@(0xA3, 0x04, 0x53, 0x7B, 0x00)
-$OriginalSpeedWriteBytes = [byte[]]@(0x89, 0x0D, 0x04, 0x53, 0x7B, 0x00)
-$OriginalSpeedWriteEdxBytes = [byte[]]@(0x89, 0x15, 0x04, 0x53, 0x7B, 0x00)
-$OriginalSpeedWriteEbxObjectBytes = [byte[]]@(0x89, 0x98, 0x98, 0x00, 0x00, 0x00)
-$OriginalSpeedWriteEsiObjectBytes = [byte[]]@(0x89, 0xB0, 0x98, 0x00, 0x00, 0x00)
-$OriginalOptionsSaveBytes = [byte[]]@(0x6A, 0xFF, 0x68, 0xAB, 0xEF, 0x6E, 0x00)
-$OriginalOptionsRestoreBytes = [byte[]]@(0xE8, 0xAE, 0x19, 0x08, 0x00)
-
-$FopenIat = 0x735430
-$FreadIat = 0x735434
-$FwriteIat = 0x735438
-$FcloseIat = 0x735444
-$GetGameVa = 0x4D6FC0
 
 function Read-U16 {
     param([byte[]]$Bytes, [int]$Offset)
@@ -309,11 +270,11 @@ function New-PatchBlob {
         param(
             [int]$Offset,
             [uint32]$SourceVa,
-            [uint32]$BackVa
+            [uint32]$BackVa,
+            [Parameter(Mandatory = $true)][byte[]]$StockWriteBytes
         )
 
-        [byte[]]$restore = @(
-            0x89, 0x0D, 0x04, 0x53, 0x7B, 0x00,
+        [byte[]]$restoreTail = @(
             0x60,
             0x80, 0x3D, 0, 0, 0, 0, 0x00,
             0x74, 0x1D,
@@ -349,24 +310,26 @@ function New-PatchBlob {
             0x61,
             0xE9, 0, 0, 0, 0
         )
+        [byte[]]$restore = $StockWriteBytes + $restoreTail
+        $shift = $StockWriteBytes.Length - 6
         Set-Bytes $Offset $restore
-        Set-UInt32 ($Offset + 0x009) $dirtyFlagVa
-        (New-RelativeCallBytes ($PatchVa + $Offset + 0x010) $GetGameVa).CopyTo($bytes, $Offset + 0x010)
-        Set-UInt32 ($Offset + 0x017) $speedTempVa
-        (New-RelativeJumpBytes ($PatchVa + $Offset + 0x028) $BackVa).CopyTo($bytes, $Offset + 0x028)
-        Set-UInt32 ($Offset + 0x02E) $rbVa
-        Set-UInt32 ($Offset + 0x033) $speedFileNameVa
-        Set-UInt32 ($Offset + 0x039) $FopenIat
-        Set-UInt32 ($Offset + 0x04C) $speedTempVa
-        Set-UInt32 ($Offset + 0x052) $FreadIat
-        Set-UInt32 ($Offset + 0x05E) $FcloseIat
-        (New-RelativeCallBytes ($PatchVa + $Offset + 0x069) $GetGameVa).CopyTo($bytes, $Offset + 0x069)
-        Set-UInt32 ($Offset + 0x070) $speedTempVa
-        (New-RelativeJumpBytes ($PatchVa + $Offset + 0x081) $BackVa).CopyTo($bytes, $Offset + 0x081)
+        Set-UInt32 ($Offset + 0x009 + $shift) $dirtyFlagVa
+        (New-RelativeCallBytes ($PatchVa + $Offset + 0x010 + $shift) $GetGameVa).CopyTo($bytes, $Offset + 0x010 + $shift)
+        Set-UInt32 ($Offset + 0x017 + $shift) $speedTempVa
+        (New-RelativeJumpBytes ($PatchVa + $Offset + 0x028 + $shift) $BackVa).CopyTo($bytes, $Offset + 0x028 + $shift)
+        Set-UInt32 ($Offset + 0x02E + $shift) $rbVa
+        Set-UInt32 ($Offset + 0x033 + $shift) $speedFileNameVa
+        Set-UInt32 ($Offset + 0x039 + $shift) $FopenIat
+        Set-UInt32 ($Offset + 0x04C + $shift) $speedTempVa
+        Set-UInt32 ($Offset + 0x052 + $shift) $FreadIat
+        Set-UInt32 ($Offset + 0x05E + $shift) $FcloseIat
+        (New-RelativeCallBytes ($PatchVa + $Offset + 0x069 + $shift) $GetGameVa).CopyTo($bytes, $Offset + 0x069 + $shift)
+        Set-UInt32 ($Offset + 0x070 + $shift) $speedTempVa
+        (New-RelativeJumpBytes ($PatchVa + $Offset + 0x081 + $shift) $BackVa).CopyTo($bytes, $Offset + 0x081 + $shift)
     }
 
-    Set-RestoreBlock 0x100 $SpeedRestoreOneVa ($SpeedRestoreOneVa + 0x06)
-    Set-RestoreBlock 0x240 $SpeedRestoreTwoVa ($SpeedRestoreTwoVa + 0x06)
+    Set-RestoreBlock 0x100 $SpeedRestoreOneVa ($SpeedRestoreOneVa + $OriginalSpeedWriteBytes.Length) $OriginalSpeedWriteBytes
+    Set-RestoreBlock 0x240 $SpeedRestoreTwoVa ($SpeedRestoreTwoVa + $OriginalSpeedWriteBytes.Length) $OriginalSpeedWriteBytes
 
     [byte[]]$copyEdx = @(
         0x80, 0x3D, 0, 0, 0, 0, 0x00,
@@ -501,6 +464,27 @@ function New-PatchBlob {
     Set-AsciiZ 0x700 "wb"
     Set-AsciiZ 0x703 "rb"
 
+    # All remaining 0x7B5304 operands belong to the established public-build
+    # payload. Relocate those operands to the selected build's stock global;
+    # the two restore blocks already begin with their profile-specific stock
+    # instruction and therefore contribute two extra public references only on
+    # the public profile.
+    $needle = [BitConverter]::GetBytes([uint32]0x7B5304)
+    $replacement = [BitConverter]::GetBytes([uint32]$GameSpeedVa)
+    $expectedReferences = if ($GameSpeedVa -eq 0x7B5304) { 12 } else { 10 }
+    $foundReferences = 0
+    for ($i = 0; $i -le ($bytes.Length - 4); $i++) {
+        if ($bytes[$i] -eq $needle[0] -and $bytes[$i + 1] -eq $needle[1] -and
+            $bytes[$i + 2] -eq $needle[2] -and $bytes[$i + 3] -eq $needle[3]) {
+            $replacement.CopyTo($bytes, $i)
+            $foundReferences++
+            $i += 3
+        }
+    }
+    if ($foundReferences -ne $expectedReferences) {
+        throw "Remember Game Speed payload expected $expectedReferences game-speed operands, found $foundReferences."
+    }
+
     return $bytes
 }
 
@@ -621,6 +605,31 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
 $pe = Get-PeInfo $bytes
+$build = Get-MajestyBuildProfile -Bytes $bytes -Pe $pe
+$SpeedSliderSaveVa = $build.SpeedSliderSaveVa; $SpeedSliderSaveOffset = $build.SpeedSliderSaveOffset
+$SpeedStepSlowerVa = $build.SpeedStepSlowerVa; $SpeedStepSlowerOffset = $build.SpeedStepSlowerOffset
+$SpeedStepFasterVa = $build.SpeedStepFasterVa; $SpeedStepFasterOffset = $build.SpeedStepFasterOffset
+$SpeedRestoreOneVa = $build.SpeedRestoreOneVa; $SpeedRestoreOneOffset = $build.SpeedRestoreOneOffset
+$SpeedRestoreTwoVa = $build.SpeedRestoreTwoVa; $SpeedRestoreTwoOffset = $build.SpeedRestoreTwoOffset
+$SpeedCopyOneVa = $build.SpeedCopyOneVa; $SpeedCopyOneOffset = $build.SpeedCopyOneOffset
+$SpeedCopyTwoVa = $build.SpeedCopyTwoVa; $SpeedCopyTwoOffset = $build.SpeedCopyTwoOffset
+$SpeedObjectInitOneVa = $build.SpeedObjectInitOneVa; $SpeedObjectInitOneOffset = $build.SpeedObjectInitOneOffset
+$SpeedObjectInitTwoVa = $build.SpeedObjectInitTwoVa; $SpeedObjectInitTwoOffset = $build.SpeedObjectInitTwoOffset
+$SpeedObjectInitThreeVa = $build.SpeedObjectInitThreeVa; $SpeedObjectInitThreeOffset = $build.SpeedObjectInitThreeOffset
+$OriginalSliderSaveBytes = $build.OriginalSliderSaveBytes
+$OriginalSpeedWriteBytes = $build.OriginalRestoreBytes
+$OriginalSpeedWriteEdxBytes = $build.OriginalCopyOneBytes
+$OriginalSpeedWriteEcxBytes = $build.OriginalCopyTwoBytes
+$OriginalSpeedWriteEbxObjectBytes = $build.OriginalObjectInitOneBytes
+$OriginalSpeedWriteEsiObjectBytes = $build.OriginalObjectInitTwoBytes
+$GetGameVa = $build.GetGameVa
+$GameSpeedVa = $build.GameSpeedVa
+$FopenIat = $build.FopenIat; $FreadIat = $build.FreadIat
+$FwriteIat = $build.FwriteIat; $FcloseIat = $build.FcloseIat
+$OldOptionsSaveVa = $build.OldOptionsSaveVa; $OldOptionsSaveOffset = $build.OldOptionsSaveOffset
+$OldOptionsRestoreVa = $build.OldOptionsRestoreVa; $OldOptionsRestoreOffset = $build.OldOptionsRestoreOffset
+$OriginalOptionsSaveBytes = $build.OriginalOptionsSaveBytes
+$OriginalOptionsRestoreBytes = $build.OriginalOptionsRestoreBytes
 $existingSection = $pe.Sections | Where-Object { $_.Name -eq $PatchSectionName } | Select-Object -First 1
 
 if ($existingSection) {
@@ -658,9 +667,9 @@ $newStepSlowerHook += [byte[]]@(0x90)
 $newStepFasterHook = New-RelativeCallBytes $SpeedStepFasterVa ($patchSectionVa + 0x550)
 $newStepFasterHook += [byte[]]@(0x90)
 $newRestoreOneHook = New-RelativeJumpBytes $SpeedRestoreOneVa ($patchSectionVa + 0x100)
-$newRestoreOneHook += [byte[]]@(0x90)
+for ($i = 5; $i -lt $OriginalSpeedWriteBytes.Length; $i++) { $newRestoreOneHook += [byte[]]@(0x90) }
 $newRestoreTwoHook = New-RelativeJumpBytes $SpeedRestoreTwoVa ($patchSectionVa + 0x240)
-$newRestoreTwoHook += [byte[]]@(0x90)
+for ($i = 5; $i -lt $OriginalSpeedWriteBytes.Length; $i++) { $newRestoreTwoHook += [byte[]]@(0x90) }
 $newCopyOneHook = New-RelativeJumpBytes $SpeedCopyOneVa ($patchSectionVa + 0x340)
 $newCopyOneHook += [byte[]]@(0x90)
 $newCopyTwoHook = New-RelativeJumpBytes $SpeedCopyTwoVa ($patchSectionVa + 0x380)
@@ -671,15 +680,28 @@ $newObjectInitTwoHook = New-RelativeJumpBytes $SpeedObjectInitTwoVa ($patchSecti
 $newObjectInitTwoHook += [byte[]]@(0x90)
 $newObjectInitThreeHook = New-RelativeJumpBytes $SpeedObjectInitThreeVa ($patchSectionVa + 0x440)
 $newObjectInitThreeHook += [byte[]]@(0x90)
-$previousRestoreTwoHook = New-RelativeJumpBytes $SpeedRestoreTwoVa ($patchSectionVa + 0x180)
-$previousRestoreTwoHook += [byte[]]@(0x90)
-$oldOptionsSaveHook = New-RelativeJumpBytes $OldOptionsSaveVa $patchSectionVa
-$oldOptionsSaveHook += [byte[]]@(0x90, 0x90)
-$oldOptionsRestoreHook = New-RelativeJumpBytes $OldOptionsRestoreVa ($patchSectionVa + 0x200)
-$oldSpeedSaveHook = New-RelativeJumpBytes $SpeedRestoreTwoVa ($patchSectionVa + 0x300)
-$oldSpeedSaveHook += [byte[]]@(0x90)
-$oldSpeedRestoreHook = New-RelativeJumpBytes $SpeedRestoreOneVa ($patchSectionVa + 0x380)
-$oldSpeedRestoreHook += [byte[]]@(0x90)
+
+$restoreTwoPreviousPatched = $false
+$restoreOneOldPatched = $false
+$restoreTwoOldPatched = $false
+$optionsSaveOldPatched = $false
+$optionsRestoreOldPatched = $false
+$optionsSaveIsStock = $true
+$optionsRestoreIsStock = $true
+if ($build.SupportsLegacyHooks) {
+    $previousRestoreTwoHook = (New-RelativeJumpBytes $SpeedRestoreTwoVa ($patchSectionVa + 0x180)) + [byte[]]@(0x90)
+    $oldOptionsSaveHook = (New-RelativeJumpBytes $OldOptionsSaveVa $patchSectionVa) + [byte[]]@(0x90, 0x90)
+    $oldOptionsRestoreHook = New-RelativeJumpBytes $OldOptionsRestoreVa ($patchSectionVa + 0x200)
+    $oldSpeedSaveHook = (New-RelativeJumpBytes $SpeedRestoreTwoVa ($patchSectionVa + 0x300)) + [byte[]]@(0x90)
+    $oldSpeedRestoreHook = (New-RelativeJumpBytes $SpeedRestoreOneVa ($patchSectionVa + 0x380)) + [byte[]]@(0x90)
+    $restoreTwoPreviousPatched = Test-BytesEqual $bytes $SpeedRestoreTwoOffset $previousRestoreTwoHook
+    $restoreOneOldPatched = Test-BytesEqual $bytes $SpeedRestoreOneOffset $oldSpeedRestoreHook
+    $restoreTwoOldPatched = Test-BytesEqual $bytes $SpeedRestoreTwoOffset $oldSpeedSaveHook
+    $optionsSaveOldPatched = Test-BytesEqual $bytes $OldOptionsSaveOffset $oldOptionsSaveHook
+    $optionsSaveIsStock = Test-BytesEqual $bytes $OldOptionsSaveOffset $OriginalOptionsSaveBytes
+    $optionsRestoreOldPatched = Test-BytesEqual $bytes $OldOptionsRestoreOffset $oldOptionsRestoreHook
+    $optionsRestoreIsStock = Test-BytesEqual $bytes $OldOptionsRestoreOffset $OriginalOptionsRestoreBytes
+}
 
 $sliderIsStock = Test-BytesEqual $bytes $SpeedSliderSaveOffset $OriginalSliderSaveBytes
 $sliderAlreadyPatched = Test-BytesEqual $bytes $SpeedSliderSaveOffset $newSliderHook
@@ -689,14 +711,11 @@ $stepFasterIsStock = Test-BytesEqual $bytes $SpeedStepFasterOffset $OriginalSpee
 $stepFasterAlreadyPatched = Test-BytesEqual $bytes $SpeedStepFasterOffset $newStepFasterHook
 $restoreOneIsStock = Test-BytesEqual $bytes $SpeedRestoreOneOffset $OriginalSpeedWriteBytes
 $restoreOneAlreadyPatched = Test-BytesEqual $bytes $SpeedRestoreOneOffset $newRestoreOneHook
-$restoreOneOldPatched = Test-BytesEqual $bytes $SpeedRestoreOneOffset $oldSpeedRestoreHook
 $restoreTwoIsStock = Test-BytesEqual $bytes $SpeedRestoreTwoOffset $OriginalSpeedWriteBytes
 $restoreTwoAlreadyPatched = Test-BytesEqual $bytes $SpeedRestoreTwoOffset $newRestoreTwoHook
-$restoreTwoPreviousPatched = Test-BytesEqual $bytes $SpeedRestoreTwoOffset $previousRestoreTwoHook
-$restoreTwoOldPatched = Test-BytesEqual $bytes $SpeedRestoreTwoOffset $oldSpeedSaveHook
 $copyOneIsStock = Test-BytesEqual $bytes $SpeedCopyOneOffset $OriginalSpeedWriteEdxBytes
 $copyOneAlreadyPatched = Test-BytesEqual $bytes $SpeedCopyOneOffset $newCopyOneHook
-$copyTwoIsStock = Test-BytesEqual $bytes $SpeedCopyTwoOffset $OriginalSpeedWriteBytes
+$copyTwoIsStock = Test-BytesEqual $bytes $SpeedCopyTwoOffset $OriginalSpeedWriteEcxBytes
 $copyTwoAlreadyPatched = Test-BytesEqual $bytes $SpeedCopyTwoOffset $newCopyTwoHook
 $objectInitOneIsStock = Test-BytesEqual $bytes $SpeedObjectInitOneOffset $OriginalSpeedWriteEbxObjectBytes
 $objectInitOneAlreadyPatched = Test-BytesEqual $bytes $SpeedObjectInitOneOffset $newObjectInitOneHook
@@ -723,10 +742,6 @@ if ($speedrunSection) {
     $objectInitTwoIsSpeedrunDirect = Test-BytesEqual $bytes $SpeedObjectInitTwoOffset $speedrunDirectHookTwo
     $objectInitThreeIsSpeedrunDirect = Test-BytesEqual $bytes $SpeedObjectInitThreeOffset $speedrunDirectHookThree
 }
-$optionsSaveOldPatched = Test-BytesEqual $bytes $OldOptionsSaveOffset $oldOptionsSaveHook
-$optionsSaveIsStock = Test-BytesEqual $bytes $OldOptionsSaveOffset $OriginalOptionsSaveBytes
-$optionsRestoreOldPatched = Test-BytesEqual $bytes $OldOptionsRestoreOffset $oldOptionsRestoreHook
-$optionsRestoreIsStock = Test-BytesEqual $bytes $OldOptionsRestoreOffset $OriginalOptionsRestoreBytes
 $headerAlreadyPatched = $existingSection -and (Test-BytesEqual $bytes $patchSectionHeaderOffset $patchSectionHeader)
 $blobAlreadyPatched = $existingSection -and (Test-BytesEqual $bytes $patchSectionRawOffset $patchBlob)
 $speedrunBlob = $null
@@ -794,6 +809,7 @@ $newSizeOfImage = Align-Value ([uint32]($patchSectionRva + $PatchVirtualSize)) (
 
 Write-Host "Majesty Gold HD Remember Game Speed installer"
 Write-Host "Game path: $resolvedGamePath"
+Write-Host "Detected build: $($build.DisplayName)"
 Write-Host "Preset file: $preferencePath"
 if ($DryRun) {
     Write-Host "Dry run: no files will be changed."

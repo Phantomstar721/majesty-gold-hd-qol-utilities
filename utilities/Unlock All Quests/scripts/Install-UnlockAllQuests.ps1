@@ -7,19 +7,63 @@ $ErrorActionPreference = "Stop"
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_unlock_all_quests_originals"
-$CaveOffset = 0x33432A
-$CaveSize = 0xD6
-$EligibilityHookOffset = 0x11BC40
-$DispatchHookOffset = 0x7A0EE
-$ResetRefreshHookOffset = 0x7A278
-$VisibilityImmediateOffset = 0x79AED
 
-[byte[]]$EligibilityOriginal = @(0x6A, 0xFF, 0x68, 0x38, 0x33, 0x70, 0x00)
-[byte[]]$EligibilityHook = @(0xE9, 0xE5, 0x86, 0x21, 0x00, 0x90, 0x90)
-[byte[]]$DispatchOriginal = @(0x81, 0xFB, 0x8A, 0x13, 0x00, 0x00)
-[byte[]]$DispatchHook = @(0xE9, 0x4F, 0xA2, 0x2B, 0x00, 0x90)
-[byte[]]$ResetRefreshOriginal = @(0x33, 0xF6, 0x39, 0x9C, 0x24, 0xB4, 0x00, 0x00, 0x00)
-[byte[]]$ResetRefreshHook = @(0xE9, 0xFD, 0xA0, 0x2B, 0x00, 0x90, 0x90, 0x90, 0x90)
+function Get-UnlockAllQuestsProfiles {
+    # Build detection uses the untouched entry of the stock quest-map rebuild
+    # routine, so separately installed QoL edits and appended PE sections do
+    # not invalidate the profile.
+    return @(
+        [pscustomobject]@{
+            Id = "public"
+            DisplayName = "Default Public (1.5.2.24)"
+            BuildSignatureOffset = 0x795D0
+            BuildSignatureBytes = [byte[]]@(0x6A,0xFF,0x68,0xC8,0xD1,0x6E,0x00,0x64,0xA1,0x00,0x00,0x00,0x00,0x50,0x83,0xEC,0x24,0x53,0x55,0x56,0x57)
+            CaveOffset = 0x33432A
+            CaveSize = 0xD6
+            EligibilityHookOffset = 0x11BC40
+            DispatchHookOffset = 0x7A0EE
+            ResetRefreshHookOffset = 0x7A278
+            VisibilityImmediateOffset = 0x79AED
+            EligibilityOriginal = [byte[]]@(0x6A,0xFF,0x68,0x38,0x33,0x70,0x00)
+            EligibilityHook = [byte[]]@(0xE9,0xE5,0x86,0x21,0x00,0x90,0x90)
+            DispatchOriginal = [byte[]]@(0x81,0xFB,0x8A,0x13,0x00,0x00)
+            DispatchHook = [byte[]]@(0xE9,0x4F,0xA2,0x2B,0x00,0x90)
+            ResetRefreshOriginal = [byte[]]@(0x33,0xF6,0x39,0x9C,0x24,0xB4,0x00,0x00,0x00)
+            ResetRefreshHook = [byte[]]@(0xE9,0xFD,0xA0,0x2B,0x00,0x90,0x90,0x90,0x90)
+            PatchBlobBase64 = "oPQlfACEwHQDwgQAav9oODNwAOkFed7/ZoH7mgJ1GYgd9CV8AGBqAIn56HdS1P+DxARh6RNc1P+B+4oTAADph13U/wAAAAAAAAAAAAAAAABgMcCi9CV8AGoAifnoRVLU/4PEBGEx9jmcJLQAAADp5F7U/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        },
+        [pscustomobject]@{
+            Id = "beta2"
+            DisplayName = "beta2 Steam Multiplayer Support (1.5.2.28)"
+            BuildSignatureOffset = 0x77D80
+            BuildSignatureBytes = [byte[]]@(0x6A,0xFF,0x68,0x98,0x26,0x70,0x00,0x64,0xA1,0x00,0x00,0x00,0x00,0x50,0x83,0xEC,0x24,0x53,0x55,0x56,0x57)
+            CaveOffset = 0x34C6BD
+            CaveSize = 0xD6
+            EligibilityHookOffset = 0x12C190
+            DispatchHookOffset = 0x789C9
+            ResetRefreshHookOffset = 0x78B54
+            VisibilityImmediateOffset = 0x7829D
+            EligibilityOriginal = [byte[]]@(0x6A,0xFF,0x68,0xD8,0xB5,0x71,0x00)
+            EligibilityHook = [byte[]]@(0xE9,0x28,0x05,0x22,0x00,0x90,0x90)
+            DispatchOriginal = [byte[]]@(0x81,0xFB,0x8A,0x13,0x00,0x00)
+            DispatchHook = [byte[]]@(0xE9,0x07,0x3D,0x2D,0x00,0x90)
+            ResetRefreshOriginal = [byte[]]@(0x33,0xF6,0x39,0x9C,0x24,0xB8,0x00,0x00,0x00)
+            ResetRefreshHook = [byte[]]@(0xE9,0xB4,0x3B,0x2D,0x00,0x90,0x90,0x90,0x90)
+            PatchBlobBase64 = "oGQRfgCEwHQDwgQAav9o2LVxAOnC+t3/ZoH7mgJ1GYgdZBF+AGBqAIn56JS20v+DxARh6UTA0v+B+4oTAADpz8LS/wAAAAAAAAAAAAAAAABgMcCiZBF+AGoAifnoYrbS/4PEBGEx9jmcJLgAAADpLcTS/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+    )
+}
+
+function Get-MajestyBuildProfile {
+    param([byte[]]$Bytes)
+    $matches = @(Get-UnlockAllQuestsProfiles | Where-Object {
+        Test-BytesEqual $Bytes $_.BuildSignatureOffset $_.BuildSignatureBytes
+    })
+    if ($matches.Count -ne 1) {
+        throw "MajestyHD.exe is not a supported stock Steam build. Supported builds: Default Public 1.5.2.24 and beta2 1.5.2.28."
+    }
+    return $matches[0]
+}
 
 function Save-PreInstallBackup {
     param(
@@ -64,67 +108,10 @@ For a guaranteed clean executable, use Steam instead:
 }
 
 function Get-PatchBlob {
-    # The quest map is rebuilt by the stock routine at VA 0x0047A1D0. Reset
-    # Quests already redraws its clouds correctly because the stock code calls
-    # that routine at VA 0x0047AE70, immediately before this patch's own
-    # continuation hook. Earlier revisions instead hand-rolled a per-control
-    # refresh loop, which updated state but never repainted, so the clouds only
-    # changed on leaving and re-entering the map.
-    #
-    # Both hooks now set or clear the session flag and then call the same stock
-    # rebuild. ECX holds the quest-map object in EDI at both hook sites, which
-    # is the register the stock Reset path passes.
-    [byte[]]$blob = New-Object byte[] $CaveSize
-
-    # Eligibility hook at VA 0x734F2A. If the process-local byte at 0x7C25F4
-    # is set, the game's normal IsQuestUnlocked predicate returns true.
-    [byte[]]$eligibilityStub = @(
-        0xA0, 0xF4, 0x25, 0x7C, 0x00,
-        0x84, 0xC0,
-        0x74, 0x03,
-        0xC2, 0x04, 0x00,
-        0x6A, 0xFF,
-        0x68, 0x38, 0x33, 0x70, 0x00,
-        0xE9, 0x05, 0x79, 0xDE, 0xFF
-    )
-
-    # Click dispatcher at VA 0x734F42. Control 0x29A sets the unlock flag and
-    # runs the stock quest-map rebuild, then rejoins the handled path.
-    [byte[]]$dispatchStub = @(
-        0x66,0x81,0xFB,0x9A,0x02,   # cmp   bx, 0x29A
-        0x75,0x19,                  # jne   passthrough
-        0x88,0x1D,0xF4,0x25,0x7C,0x00,  # mov   [0x7C25F4], bl
-        0x60,                       # pushad
-        0x6A,0x00,                  # push  0
-        0x89,0xF9,                  # mov   ecx, edi
-        0xE8,0x77,0x52,0xD4,0xFF,   # call  0x0047A1D0
-        0x83,0xC4,0x04,             # add   esp, 4
-        0x61,                       # popad
-        0xE9,0x13,0x5C,0xD4,0xFF,   # jmp   0x0047AB75
-        0x81,0xFB,0x8A,0x13,0x00,0x00,  # cmp   ebx, 0x138A  (displaced)
-        0xE9,0x87,0x5D,0xD4,0xFF    # jmp   0x0047ACF4
-    )
-
-    # Reset Quests continuation at VA 0x734F7A. Clears the flag, then runs the
-    # same rebuild so the clouds come back without leaving the map.
-    [byte[]]$resetRefreshStub = @(
-        0x60,                       # pushad
-        0x31,0xC0,                  # xor   eax, eax
-        0xA2,0xF4,0x25,0x7C,0x00,   # mov   [0x7C25F4], al
-        0x6A,0x00,                  # push  0
-        0x89,0xF9,                  # mov   ecx, edi
-        0xE8,0x45,0x52,0xD4,0xFF,   # call  0x0047A1D0
-        0x83,0xC4,0x04,             # add   esp, 4
-        0x61,                       # popad
-        0x31,0xF6,                  # xor   esi, esi              (displaced)
-        0x39,0x9C,0x24,0xB4,0x00,0x00,0x00,  # cmp [esp+0xB4], ebx (displaced)
-        0xE9,0xE4,0x5E,0xD4,0xFF    # jmp   0x0047AE81
-    )
-
-    [Array]::Copy($eligibilityStub, 0, $blob, 0x00, $eligibilityStub.Length)
-    [Array]::Copy($dispatchStub, 0, $blob, 0x18, $dispatchStub.Length)
-    [Array]::Copy($resetRefreshStub, 0, $blob, 0x50, $resetRefreshStub.Length)
-    return $blob
+    param($Profile)
+    # The profile blobs are literal ports of the same stock lifecycle. See
+    # docs/STOCK-TRACE.md for the verified hook, callback, and continuation map.
+    return [Convert]::FromBase64String($Profile.PatchBlobBase64)
 }
 
 function Test-BytesEqual {
@@ -301,7 +288,20 @@ $exePath = Join-Path $resolvedGamePath "MajestyHD.exe"
 if (-not (Test-Path -LiteralPath $exePath)) { throw "Could not find MajestyHD.exe at $exePath." }
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
-[byte[]]$patchBlob = Get-PatchBlob
+$profile = Get-MajestyBuildProfile $bytes
+$CaveOffset = [int]$profile.CaveOffset
+$CaveSize = [int]$profile.CaveSize
+$EligibilityHookOffset = [int]$profile.EligibilityHookOffset
+$DispatchHookOffset = [int]$profile.DispatchHookOffset
+$ResetRefreshHookOffset = [int]$profile.ResetRefreshHookOffset
+$VisibilityImmediateOffset = [int]$profile.VisibilityImmediateOffset
+[byte[]]$EligibilityOriginal = $profile.EligibilityOriginal
+[byte[]]$EligibilityHook = $profile.EligibilityHook
+[byte[]]$DispatchOriginal = $profile.DispatchOriginal
+[byte[]]$DispatchHook = $profile.DispatchHook
+[byte[]]$ResetRefreshOriginal = $profile.ResetRefreshOriginal
+[byte[]]$ResetRefreshHook = $profile.ResetRefreshHook
+[byte[]]$patchBlob = Get-PatchBlob $profile
 $uiFiles = @(Get-ChildItem -LiteralPath (Join-Path $resolvedGamePath "Data") -Filter "UIData_*.dat" | Sort-Object Name)
 
 $eligibilityStock = Test-BytesEqual $bytes $EligibilityHookOffset $EligibilityOriginal
@@ -340,6 +340,7 @@ if (-not $freshState -and -not $patchedState) {
 $labelResults = foreach ($file in $uiFiles) { Patch-QuestButtonLabel $file.FullName -InspectOnly }
 Write-Host "Majesty Gold HD Unlock All Quests installer"
 Write-Host "Game path: $resolvedGamePath"
+Write-Host "Game build: $($profile.DisplayName)"
 if ($DryRun) { Write-Host "Dry run: no files will be changed." }
 Write-Host ""
 

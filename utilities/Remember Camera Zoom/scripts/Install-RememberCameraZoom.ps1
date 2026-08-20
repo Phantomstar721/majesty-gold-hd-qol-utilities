@@ -5,6 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "NativePathEncoding.ps1")
+. (Join-Path $PSScriptRoot "MajestyBuildProfiles.ps1")
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $BackupDirName = "_remember_camera_zoom_originals"
@@ -15,23 +16,6 @@ $SectionCharacteristics = 3758096416  # 0xE0000020: code, execute, read, write
 $PatchSectionName = ".mczp"
 $PatchRawSize = 0x1000
 $PatchVirtualSize = 0x800
-
-$ZoomConstructorCallVa = 0x5DDCC6
-$ZoomConstructorCallOffset = 0x1DD0C6
-$ZoomVtableEntryVa = 0x749288
-$ZoomVtableEntryOffset = 0x348688
-$ZoomRuntimeVtableEntryVa = 0x73B810
-$ZoomRuntimeVtableEntryOffset = 0x33AC10
-$ZoomSetterVa = 0x5DD910
-
-$OriginalConstructorCallBytes = [byte[]]@(0xE8, 0x45, 0xFC, 0xFF, 0xFF)
-$OriginalVtableEntryBytes = [byte[]]@(0x10, 0xD9, 0x5D, 0x00)
-$OriginalRuntimeVtableEntryBytes = [byte[]]@(0x10, 0xD9, 0x5D, 0x00)
-
-$FopenIat = 0x735430
-$FreadIat = 0x735434
-$FwriteIat = 0x735438
-$FcloseIat = 0x735444
 
 function Read-U16 {
     param([byte[]]$Bytes, [int]$Offset)
@@ -463,6 +447,21 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
 $pe = Get-PeInfo $bytes
+$build = Get-MajestyBuildProfile -Bytes $bytes -Pe $pe
+$ZoomConstructorCallVa = $build.ZoomConstructorCallVa
+$ZoomConstructorCallOffset = $build.ZoomConstructorCallOffset
+$ZoomVtableEntryVa = $build.ZoomVtableEntryVa
+$ZoomVtableEntryOffset = $build.ZoomVtableEntryOffset
+$ZoomRuntimeVtableEntryVa = $build.ZoomRuntimeVtableEntryVa
+$ZoomRuntimeVtableEntryOffset = $build.ZoomRuntimeVtableEntryOffset
+$ZoomSetterVa = $build.ZoomSetterVa
+$OriginalConstructorCallBytes = $build.OriginalConstructorCallBytes
+$OriginalVtableEntryBytes = $build.OriginalVtableEntryBytes
+$OriginalRuntimeVtableEntryBytes = $build.OriginalRuntimeVtableEntryBytes
+$FopenIat = $build.FopenIat
+$FreadIat = $build.FreadIat
+$FwriteIat = $build.FwriteIat
+$FcloseIat = $build.FcloseIat
 $existingSection = $pe.Sections | Where-Object { $_.Name -eq $PatchSectionName } | Select-Object -First 1
 
 if ($existingSection) {
@@ -523,6 +522,7 @@ $newSizeOfImage = Align-Value ([uint32]($patchSectionRva + $PatchVirtualSize)) (
 
 Write-Host "Majesty Gold HD Remember Camera Zoom installer"
 Write-Host "Game path: $resolvedGamePath"
+Write-Host "Detected build: $($build.DisplayName)"
 Write-Host "Preset file: $preferencePath"
 if ($DryRun) {
     Write-Host "Dry run: no files will be changed."

@@ -28,8 +28,9 @@ Close Majesty Gold HD, then double-click:
 Uninstall - Restore Original Quest Buttons.bat
 ```
 
-The installer creates backups the first time it runs and the uninstaller restores those
-files.
+The installer creates build-scoped, integrity-checked backups the first time it
+runs. The uninstaller restores only this utility's owned menu records and fields,
+so other UIData changes such as the Unlock All Quests label remain intact.
 
 ## Notes
 
@@ -44,8 +45,10 @@ with a path:
 powershell.exe -ExecutionPolicy Bypass -File .\scripts\Install-DownloadableQuestShortcut.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Majesty HD"
 ```
 
-Tested with the Steam release of Majesty Gold HD at `1680x1050`. The installer also
-patches the other modern UI layouts that contain the same quest selection menu.
+Supported Steam branches are the default Public release (`1.5.2.24`) and
+`beta2` Multiplayer Support (`1.5.2.28`). The installer detects the branch
+automatically and patches every modern UI layout containing the same stock quest
+selection menu. See [docs/research.md](docs/research.md) for the exact stock map.
 
 ## Non-default game location
 
@@ -59,10 +62,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Install-Downloadable
 
 ## If you ever need a clean executable
 
-These utilities uninstall by reversing their own byte changes, so you do not
-need a backup copy to remove them. The `_*_originals` folder each installer
-creates is only a convenience snapshot of whatever was on disk beforehand, which
-may already include other patches. It is not a stock game file.
+The executable edits are removed by reversing only this utility's own operands.
+UIData backups are build-scoped and manifest-validated; the uninstaller uses
+only the menu record and fields it owns rather than copying a whole archive over
+other installed UI changes.
 
 For a guaranteed unmodified executable, let Steam do it:
 

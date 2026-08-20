@@ -4,6 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "MajestyBuildProfiles.ps1")
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 $SectionName = ".mgvl"
@@ -11,22 +12,10 @@ $SectionCharacteristics = 1610612768
 $PatchVirtualSize = 0xBA
 $PatchRawSize = 0x200
 $IconPayloadOffset = 0x80
-$GateOffset = 0x979D5
-$IconDispatchOffset = 0x97818
-$IconDispatchVa = 0x498418
-$ThreatDispatchOffset = 0x97AD1
-$ThreatDispatchVa = 0x4986D1
-$DisplayClassifierVa = 0x508510
-$AttributeGetterVa = 0x5B9FD0
-$MonsterResolverVa = 0x4BB0A0
-$IconHeroResumeVa = 0x498421
-$IconMonsterResumeVa = 0x49847D
-
 [byte[]]$OriginalGateBytes = @(0x0F, 0x85, 0xB6, 0x04, 0x00, 0x00)
 [byte[]]$PatchedGateBytes = @(0x0F, 0x85, 0xCA, 0x00, 0x00, 0x00)
 [byte[]]$OriginalIconDispatchBytes = @(0x6A, 0x01, 0x8D, 0x8C, 0x24, 0xC4, 0x00, 0x00, 0x00)
 [byte[]]$LegacyIconDispatchBytes = @(0xE9, 0x80, 0xCB, 0x29, 0x00, 0x90, 0x90, 0x90, 0x90)
-[byte[]]$OriginalThreatDispatchBytes = @(0xE8, 0xFA, 0x18, 0x12, 0x00)
 [byte[]]$LegacyIconPayload = @(
     0x57, 0xE8, 0x6D, 0x35, 0xDD, 0xFF, 0x83, 0xC4, 0x04, 0x83, 0xF8, 0x01, 0x74, 0x1E,
     0x83, 0xF8, 0x02, 0x74, 0x19, 0x8B, 0x47, 0x28, 0x50, 0x8D, 0x84, 0x24, 0xC4, 0x00,
@@ -186,6 +175,34 @@ $resolvedGamePath = Get-MajestyPath $GamePath
 $exePath = Join-Path $resolvedGamePath "MajestyHD.exe"
 if (-not (Test-Path -LiteralPath $exePath)) { throw "Could not find MajestyHD.exe at $exePath." }
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
+$buildProfile = Get-MajestyBuildProfile $bytes
+if ($buildProfile.Key -eq "public") {
+    $GateOffset = 0x979D5
+    $IconDispatchOffset = 0x97818
+    $IconDispatchVa = 0x498418
+    $ThreatDispatchOffset = 0x97AD1
+    $ThreatDispatchVa = 0x4986D1
+    $DisplayClassifierVa = 0x508510
+    $AttributeGetterVa = 0x5B9FD0
+    $MonsterResolverVa = 0x4BB0A0
+    $IconHeroResumeVa = 0x498421
+    $IconMonsterResumeVa = 0x49847D
+    [byte[]]$OriginalThreatDispatchBytes = @(0xE8, 0xFA, 0x18, 0x12, 0x00)
+    $supportsLegacyPatch = $true
+} else {
+    $GateOffset = 0x98005
+    $IconDispatchOffset = 0x97E48
+    $IconDispatchVa = 0x498A48
+    $ThreatDispatchOffset = 0x98101
+    $ThreatDispatchVa = 0x498D01
+    $DisplayClassifierVa = 0x50A6E0
+    $AttributeGetterVa = 0x5CEF70
+    $MonsterResolverVa = 0x4BBAE0
+    $IconHeroResumeVa = 0x498A51
+    $IconMonsterResumeVa = 0x498AAD
+    [byte[]]$OriginalThreatDispatchBytes = @(0xE8, 0x6A, 0x62, 0x13, 0x00)
+    $supportsLegacyPatch = $false
+}
 $pe = Get-PeInfo $bytes
 $section = $pe.Sections | Where-Object Name -eq $SectionName | Select-Object -First 1
 
@@ -193,7 +210,7 @@ $isGateStock = Test-BytesEqual $bytes $GateOffset $OriginalGateBytes
 $isGatePatched = Test-BytesEqual $bytes $GateOffset $PatchedGateBytes
 $isIconStock = Test-BytesEqual $bytes $IconDispatchOffset $OriginalIconDispatchBytes
 $isIconPatched = $false
-$isLegacyIconPatched = (Test-BytesEqual $bytes $IconDispatchOffset $LegacyIconDispatchBytes) -and
+$isLegacyIconPatched = $supportsLegacyPatch -and (Test-BytesEqual $bytes $IconDispatchOffset $LegacyIconDispatchBytes) -and
     (Test-BytesEqual $bytes $LegacyIconCodeCaveOffset $LegacyIconPayload)
 $isThreatStock = Test-BytesEqual $bytes $ThreatDispatchOffset $OriginalThreatDispatchBytes
 
@@ -215,10 +232,10 @@ if ($section) {
     $isIconPatched = Test-BytesEqual $bytes $IconDispatchOffset $patchedIconDispatch
     $isThreatPatched = Test-BytesEqual $bytes $ThreatDispatchOffset $patchedThreatDispatch
     $blobPatched = Test-BytesEqual $bytes $section.RawOffset $expectedBlob
-    $legacyBlobPatched = Test-BytesEqual $bytes $section.RawOffset $legacyBlob
+    $legacyBlobPatched = $supportsLegacyPatch -and (Test-BytesEqual $bytes $section.RawOffset $legacyBlob)
     $blobEmpty = Test-ZeroRange $bytes $section.RawOffset $PatchRawSize
     $headerOwned = (Test-BytesEqual $bytes $section.HeaderOffset $expectedHeader) -or
-        (Test-BytesEqual $bytes $section.HeaderOffset $legacyHeader)
+        ($supportsLegacyPatch -and (Test-BytesEqual $bytes $section.HeaderOffset $legacyHeader))
     if (-not $headerOwned) { throw "The .mgvl section header is not owned by Generic Visitor Lists." }
     if (-not $blobPatched -and -not $legacyBlobPatched -and -not $blobEmpty) { throw "The .mgvl section contains unexpected data." }
     if (-not $isThreatStock -and -not $isThreatPatched) { throw "The visitor-row level hook does not target .mgvl or stock." }
@@ -233,6 +250,7 @@ if (-not $isIconStock -and -not $isIconPatched -and -not $isLegacyIconPatched) {
 
 Write-Host "Majesty Gold HD Generic Visitor Lists restore"
 Write-Host "Game path: $resolvedGamePath"
+Write-Host "Game build: $($buildProfile.Name)"
 if ($DryRun) { Write-Host "Dry run: no files will be changed." }
 Write-Host ""
 

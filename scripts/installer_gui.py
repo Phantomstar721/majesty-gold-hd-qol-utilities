@@ -9,7 +9,16 @@ import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 import webbrowser
 
-from qol_installer import UTILITIES, Utility, detect_utility, is_game_exe, resolve_game_exe, run_utility
+from qol_installer import (
+    UTILITIES,
+    GameBuild,
+    Utility,
+    detect_game_build,
+    detect_utility,
+    is_game_exe,
+    resolve_game_exe,
+    run_utility,
+)
 
 
 COLORS = {
@@ -49,6 +58,8 @@ class InstallerApp:
         self.buttons: dict[str, tuple[ttk.Button, ttk.Button]] = {}
         self.messages: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
+        self.game_build: GameBuild | None = None
+        self.detection_generation = 0
         self._styles()
         self._build()
         self.root.after(100, self._poll)
@@ -138,30 +149,55 @@ class InstallerApp:
     def refresh(self) -> None:
         if self.busy:
             return
+        self.detection_generation += 1
+        generation = self.detection_generation
         target = self._target(False)
         if not target:
+            self.game_build = None
             self.game_status.set("MajestyHD.exe was not detected — choose it manually")
             self.game_label.configure(fg=COLORS["error"])
             for state in self.states.values(): state.set("Unavailable")
             self._enabled(False)
+            self.entry.configure(state="normal")
+            self.browse.configure(state="normal")
             return
-        self.game_status.set("Detected · inspecting installed utilities")
-        self.game_label.configure(fg=COLORS["success"])
+        self.game_status.set("Found MajestyHD.exe · identifying game build…")
+        self.game_label.configure(fg=COLORS["muted"])
         self._enabled(False)
-        threading.Thread(target=self._detect_worker, args=(target,), daemon=True).start()
+        threading.Thread(target=self._detect_worker, args=(target, generation), daemon=True).start()
 
-    def _detect_worker(self, target: Path) -> None:
-        results = {utility.key: detect_utility(utility, target) for utility in UTILITIES}
-        self.messages.put(("detected", results))
+    def _detect_worker(self, target: Path, generation: int) -> None:
+        build = detect_game_build(target)
+        results = {
+            utility.key: detect_utility(utility, target)
+            if build is not None or utility.preference_only
+            else ("unsupported", "Unsupported")
+            for utility in UTILITIES
+        }
+        self.messages.put(("detected", (generation, target, build, results)))
 
     def _one(self, utility: Utility, action: str) -> None:
         target = self._target()
         if target:
+            if not utility.preference_only and detect_game_build(target) is None:
+                messagebox.showerror(
+                    "Unsupported MajestyHD.exe",
+                    "Executable patches support the Steam Default Public Version (1.5.2.24) "
+                    "and beta2 Steam Multiplayer Support (1.5.2.28).",
+                )
+                return
             self._start([(utility, action)], target, f"{action.title()}ing {utility.name}…")
 
     def _all(self, action: str) -> None:
         target = self._target()
         if not target:
+            return
+        if detect_game_build(target) is None:
+            messagebox.showerror(
+                "Unsupported MajestyHD.exe",
+                "Install All and Uninstall All require the Steam Default Public Version (1.5.2.24) "
+                "or beta2 Steam Multiplayer Support (1.5.2.28).",
+            )
             return
         jobs = [(utility, action) for utility in (UTILITIES if action == "install" else reversed(UTILITIES))]
         self._start(jobs, target, f"{action.title()}ing all utilities…")
@@ -195,17 +231,32 @@ class InstallerApp:
             while True:
                 kind, payload = self.messages.get_nowait()
                 if kind == "detected":
-                    results = payload
+                    generation, target, build, results = payload
+                    if generation != self.detection_generation or target != Path(self.game_var.get().strip()):
+                        continue
+                    self.game_build = build
                     for utility in UTILITIES:
                         status, detail = results[utility.key]
                         self.states[utility.key].set(detail if status != "error" else "Needs attention")
                         install, uninstall = self.buttons[utility.key]
                         install.configure(text="Installed" if status == "installed" else "Install")
-                        if status == "installed": install.configure(state="disabled")
                     self._enabled(True)
                     for utility in UTILITIES:
-                        if results[utility.key][0] == "installed": self.buttons[utility.key][0].configure(state="disabled")
-                    self.game_status.set("Detected · status is up to date")
+                        status = results[utility.key][0]
+                        if status == "installed":
+                            self.buttons[utility.key][0].configure(state="disabled")
+                        if build is None and not utility.preference_only:
+                            install, uninstall = self.buttons[utility.key]
+                            install.configure(state="disabled")
+                            uninstall.configure(state="disabled")
+                    if build is None:
+                        self.install_all.configure(state="disabled")
+                        self.uninstall_all.configure(state="disabled")
+                        self.game_status.set("Unsupported build · choose Steam public 1.5.2.24 or beta2 1.5.2.28")
+                        self.game_label.configure(fg=COLORS["error"])
+                    else:
+                        self.game_status.set(f"Detected · {build.display_name} · status is up to date")
+                        self.game_label.configure(fg=COLORS["success"])
                 elif kind == "done":
                     self.busy = False
                     self.activity.set("Finished successfully")

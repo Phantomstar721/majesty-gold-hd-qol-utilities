@@ -4,19 +4,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "MajestyBuildProfiles.ps1")
 
 $DefaultGamePath = "C:\Program Files (x86)\Steam\steamapps\common\Majesty HD"
 
 $SectionName = ".mpst"
-$LoadCallOffset = 0x77D30
-$LoadCallVa = 0x478930
-$SaveCallOffset = 0x124196
-$SaveCallVa = 0x524D96
 
 $PatchRawSize = 0x1200
-
-[byte[]]$OriginalLoadCall = @(0xE8, 0xAB, 0xCA, 0x0A, 0x00)
-[byte[]]$OriginalSaveCall = @(0xE8, 0xA5, 0x07, 0x00, 0x00)
 
 function Read-U16 {
     param([byte[]]$Bytes, [int]$Offset)
@@ -229,6 +223,13 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 [byte[]]$bytes = [IO.File]::ReadAllBytes($exePath)
 
 $pe = Get-PeInfo $bytes
+$build = Get-MajestyBuildProfile -Bytes $bytes -Pe $pe
+$LoadCallOffset = $build.LoadCallOffset
+$LoadCallVa = $build.LoadCallVa
+$SaveCallOffset = $build.SaveCallOffset
+$SaveCallVa = $build.SaveCallVa
+$OriginalLoadCall = $build.OriginalLoadCall
+$OriginalSaveCall = $build.OriginalSaveCall
 $section = $pe.Sections | Where-Object { $_.Name -eq $SectionName } | Select-Object -First 1
 
 $loadIsStock = Test-BytesEqual $bytes $LoadCallOffset $OriginalLoadCall
@@ -236,6 +237,7 @@ $saveIsStock = Test-BytesEqual $bytes $SaveCallOffset $OriginalSaveCall
 
 Write-Host "Majesty Gold HD Mod Persistence restore"
 Write-Host "Game path: $resolvedGamePath"
+Write-Host "Detected build: $($build.DisplayName)"
 if ($DryRun) {
     Write-Host "Dry run: no files will be changed."
 }
@@ -257,13 +259,21 @@ $saveIsPatched = Test-BytesEqual $bytes $SaveCallOffset $PatchedSaveCall
 $sectionIsLast = ($section.Index -eq ($pe.SectionCount - 1)) -and
                  ($bytes.Length -eq ($section.RawOffset + $PatchRawSize))
 $sectionIsInert = Test-ZeroRange $bytes $section.RawOffset $PatchRawSize
+$hasInstalledHooks = $saveIsPatched -or $loadIsPatched
 
-if ($saveIsStock -and $loadIsStock -and $sectionIsInert -and -not $sectionIsLast) {
+# A failed/interrupted install may leave one exact hook installed and the other
+# still stock. That state is safe to unwind. Any third byte pattern is not:
+# removing .mpst could strand an unknown branch into discarded private code.
+if (-not ($saveIsStock -or $saveIsPatched) -or
+    -not ($loadIsStock -or $loadIsPatched)) {
+    throw "MajestyHD.exe has unexpected bytes at a mod persistence hook. No game files were changed."
+}
+if (-not $hasInstalledHooks -and -not $sectionIsInert) {
+    throw "The .mpst section is active, but neither mod persistence hook is installed. No game files were changed."
+}
+if (-not $hasInstalledHooks -and $sectionIsInert -and -not $sectionIsLast) {
     Write-Host "MajestyHD.exe: Remember Active Mods is already uninstalled; its inert private section is reserved for safe reuse."
     return
-}
-if (-not (($saveIsPatched -and $loadIsPatched) -or ($saveIsStock -and $loadIsStock -and $sectionIsInert))) {
-    throw "MajestyHD.exe has only part of the mod persistence section patch. Refusing to restore automatically."
 }
 
 if ($sectionIsLast) {
@@ -272,7 +282,9 @@ if ($sectionIsLast) {
 }
 
 if ($DryRun) {
-    Write-Host ("MajestyHD.exe: would restore mod-save hook at file offset 0x{0:X}." -f $SaveCallOffset)
+    if ($saveIsPatched) {
+        Write-Host ("MajestyHD.exe: would restore mod-save hook at file offset 0x{0:X}." -f $SaveCallOffset)
+    }
     if ($loadIsPatched) {
         Write-Host ("MajestyHD.exe: would restore mod-load hook at file offset 0x{0:X}." -f $LoadCallOffset)
     }
