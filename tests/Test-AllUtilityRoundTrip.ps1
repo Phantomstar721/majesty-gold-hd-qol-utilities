@@ -60,18 +60,24 @@ $patches = [ordered]@{
         Restore = Utility-Script "Generic Visitor Lists" "Restore-GenericVisitorLists.ps1"
         InstalledPhrase = "threat ranks are already installed"
     }
+    lower = [pscustomobject]@{
+        Name = "Lower Tracking Window"
+        Install = Utility-Script "Lower Tracking Window" "Install-LowerTrackingWindow.ps1"
+        Restore = Utility-Script "Lower Tracking Window" "Restore-LowerTrackingWindow.ps1"
+        InstalledPhrase = "lower tracking window is already installed"
+    }
 }
 
 $scenarios = @(
     [pscustomobject]@{
         Name = "download-before-unlock"
-        Install = @("download", "map", "unlock", "suppress", "mods", "speed", "zoom", "visitors")
-        Restore = @("download", "mods", "unlock", "visitors", "speed", "map", "zoom", "suppress")
+        Install = @("download", "map", "unlock", "suppress", "mods", "speed", "zoom", "visitors", "lower")
+        Restore = @("download", "mods", "lower", "unlock", "visitors", "speed", "map", "zoom", "suppress")
     },
     [pscustomobject]@{
         Name = "unlock-before-download"
-        Install = @("visitors", "zoom", "speed", "mods", "suppress", "unlock", "map", "download")
-        Restore = @("unlock", "download", "map", "suppress", "mods", "speed", "zoom", "visitors")
+        Install = @("lower", "visitors", "zoom", "speed", "mods", "suppress", "unlock", "map", "download")
+        Restore = @("lower", "unlock", "download", "map", "suppress", "mods", "speed", "zoom", "visitors")
     }
 )
 

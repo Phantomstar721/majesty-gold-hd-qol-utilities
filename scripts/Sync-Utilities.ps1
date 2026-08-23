@@ -46,6 +46,7 @@ if (-not $SourceRoot) {
 $UtilityRepos = [ordered]@{
     "Downloadable Quests Shortcut" = "majesty-gold-hd-downloadable-quests-shortcut"
     "Generic Visitor Lists"         = "majesty-gold-hd-generic-visitor-lists"
+    "Lower Tracking Window"        = "majesty-gold-hd-lower-tracking-window"
     "Quest Map Drag"               = "majesty-gold-hd-quest-map-drag"
     "Remember Active Mods"         = "majesty-gold-hd-remember-active-mods"
     "Remember Camera Zoom"         = "majesty-gold-hd-remember-camera-zoom"

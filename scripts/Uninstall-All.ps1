@@ -63,6 +63,7 @@ Write-Host ""
 # Reverse order keeps the combined log intuitive, but it is not required.
 # Every bundled utility restores its hooks immediately and safely leaves inert
 # private storage when later PE sections retain their current addresses.
+Invoke-UtilityScript "Lower Tracking Window" "utilities\Lower Tracking Window\scripts\Restore-LowerTrackingWindow.ps1"
 Invoke-UtilityScript "Generic Visitor Lists" "utilities\Generic Visitor Lists\scripts\Restore-GenericVisitorLists.ps1"
 Invoke-UtilityScript "Remember Camera Zoom" "utilities\Remember Camera Zoom\scripts\Restore-RememberCameraZoom.ps1"
 Invoke-UtilityScript "Remember Game Speed" "utilities\Remember Game Speed\scripts\Restore-RememberGameSpeed.ps1"

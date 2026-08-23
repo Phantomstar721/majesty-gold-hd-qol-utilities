@@ -44,10 +44,10 @@ class InstallerApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         root.title("Majesty Gold HD QoL Utilities")
-        # Keep all nine utility cards and the footer buttons visible on first
+        # Keep all utility cards and the footer buttons visible on first
         # launch, including at the common 125% Windows display scale.
-        root.geometry("980x960")
-        root.minsize(880, 900)
+        root.geometry("980x1020")
+        root.minsize(880, 940)
         root.configure(background=COLORS["window"])
         self.font = self._font(("Segoe UI", "Tahoma"), "TkDefaultFont")
         self.heading = self._font(("Georgia", "Palatino Linotype", "Segoe UI Semibold"), self.font)

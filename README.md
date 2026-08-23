@@ -56,6 +56,9 @@ Run anyway** only if you downloaded it from the official Workshop item/release.
 - **Remember Camera Zoom** — saves and restores the camera zoom setting.
 - **Generic Visitor Lists** — lets building visitor lists render nonhero units
   with stock monster icons, live name/action/HP data, and a Threat Rank.
+- **Lower Tracking Window** — changes the lower window's Autoscan control into
+  a stock-style Track Selected button while leaving every dialog Track button
+  connected to the upper window.
 
 ### Monster Threat Rank
 
@@ -109,3 +112,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Build-Exe.ps1
 The build produces the standalone `Majesty QoL Utilities.exe`; players do not
 need Python or PowerShell modules. The app embeds and runs each utility's
 existing version-checked PowerShell patcher.
+
+Maintainers can stage the current build for RGSEditor after building:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Stage-Workshop.ps1
+```

@@ -13,6 +13,16 @@ straight to the main menu.
 That is it. The change is saved in your Majesty preferences and should keep working
 across future launches.
 
+## Supported game versions
+
+This preferences-only utility supports both Steam branches:
+
+- **Default Public Version** (`1.5.2.24`)
+- **beta2 / Steam Multiplayer Support** (`1.5.2.28`)
+
+Unlike the executable patchers in the QoL bundle, it does not need to select an
+address profile: both branches read the same per-user `IntroVideo` preference.
+
 ## Undo The Change
 
 Double-click:

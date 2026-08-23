@@ -1,0 +1,18 @@
+<Majesty>
+	<SteamWorkshop id="3778947832" visibility="Public">
+		<Title lang="en_US">Majesty Gold HD QoL Utilities</Title>
+		<Description lang="en_US">A standalone installer for ten Majesty Gold HD quality-of-life improvements.
+
+Supports both Default Public 1.5.2.24 and beta2 Steam Multiplayer Support 1.5.2.28. Each utility can be installed or removed independently.
+
+Subscribe, open the Workshop item folder, close Majesty, and run Majesty QoL Utilities.exe. The app identifies the selected supported game build before enabling executable patches.
+
+The download contains no Majesty game assets. Changes are applied only to your local game installation or preferences when you run the app.
+
+Full patch details, source code, and individual utility documentation are linked from the app.</Description>
+		<ContentPath>C:\Program Files (x86)\Steam\steamapps\common\Majesty HD\SDK\Mods\MajestyQoLUtilitiesUpload\content</ContentPath>
+		<PreviewImagePath>C:\Program Files (x86)\Steam\steamapps\common\Majesty HD\SDK\Mods\MajestyQoLUtilitiesUpload\workshop-preview.jpg</PreviewImagePath>
+		<IDTag>Original Rules</IDTag>
+		<IDTag>Northern Expansion Rules</IDTag>
+	</SteamWorkshop>
+</Majesty>

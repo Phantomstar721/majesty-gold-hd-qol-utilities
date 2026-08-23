@@ -1,0 +1,19 @@
+MAJESTY GOLD HD QOL UTILITIES
+
+1. Close Majesty Gold HD.
+2. Double-click "Majesty QoL Utilities.exe" and approve the administrator prompt.
+3. Confirm the app detects either Default Public 1.5.2.24 or beta2 Steam
+   Multiplayer Support 1.5.2.28.
+4. Install the improvements you want.
+5. Launch Majesty normally through Steam.
+
+The app can install or remove all ten utilities separately, or handle all of
+them together. It contains no game assets; changes are applied locally only
+when you run the app. An unknown MajestyHD.exe is rejected before executable
+patches run.
+
+If Steam updates or verifies the game, reopen this app and reinstall your
+chosen utilities for the currently selected branch.
+
+Full patch details and source:
+https://github.com/Phantomstar721/majesty-gold-hd-qol-utilities

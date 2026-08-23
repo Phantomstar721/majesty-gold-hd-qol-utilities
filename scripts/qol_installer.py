@@ -92,6 +92,8 @@ UTILITIES = (
             r"Remember Camera Zoom\scripts\Install-RememberCameraZoom.ps1", r"Remember Camera Zoom\scripts\Restore-RememberCameraZoom.ps1", "already installed"),
     Utility("generic-visitors", "Generic Visitor Lists", "Displays nonhero visitors with stock monster icons and XP-derived Threat Ranks.",
             r"Generic Visitor Lists\scripts\Install-GenericVisitorLists.ps1", r"Generic Visitor Lists\scripts\Restore-GenericVisitorLists.ps1", "Threat Ranks are already installed"),
+    Utility("lower-tracking", "Lower Tracking Window", "Changes lower Autoscan into a Track Selected button for the lower mini-camera.",
+            r"Lower Tracking Window\scripts\Install-LowerTrackingWindow.ps1", r"Lower Tracking Window\scripts\Restore-LowerTrackingWindow.ps1", "Lower Tracking Window is already installed"),
 )
 
 

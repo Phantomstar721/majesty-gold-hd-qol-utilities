@@ -72,6 +72,7 @@ Invoke-UtilityScript "Remember Active Mods" "utilities\Remember Active Mods\scri
 Invoke-UtilityScript "Remember Game Speed" "utilities\Remember Game Speed\scripts\Install-RememberGameSpeed.ps1"
 Invoke-UtilityScript "Remember Camera Zoom" "utilities\Remember Camera Zoom\scripts\Install-RememberCameraZoom.ps1"
 Invoke-UtilityScript "Generic Visitor Lists" "utilities\Generic Visitor Lists\scripts\Install-GenericVisitorLists.ps1"
+Invoke-UtilityScript "Lower Tracking Window" "utilities\Lower Tracking Window\scripts\Install-LowerTrackingWindow.ps1"
 
 Write-Host ""
 if ($DryRun) {
