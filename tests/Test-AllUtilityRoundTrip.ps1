@@ -68,6 +68,14 @@ $patches = [ordered]@{
     }
 }
 
+$downloadRestoreSource = Get-Content -LiteralPath $patches.download.Restore -Raw
+if (-not $downloadRestoreSource.Contains('PreparedBytes = $newBytes')) {
+    throw "Downloadable Quests restore planning no longer retains its validated output."
+}
+if ($downloadRestoreSource.Contains('Restore-UiDataOwnedFields $target $record.SourcePath | Out-Null')) {
+    throw "Downloadable Quests restore write phase reparses every UIData archive."
+}
+
 $scenarios = @(
     [pscustomobject]@{
         Name = "download-before-unlock"

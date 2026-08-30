@@ -267,10 +267,11 @@ function Restore-UiDataOwnedFields {
         }
     }
     if (-not $needsRestore) {
-        return [pscustomobject]@{ Status = "AlreadyRestored"; Path = $Path }
-    }
-    if ($InspectOnly) {
-        return [pscustomobject]@{ Status = "WouldRestore"; Path = $Path }
+        return [pscustomobject]@{
+            Status = "AlreadyRestored"
+            Path = $Path
+            PreparedBytes = $null
+        }
     }
 
     foreach ($fieldOffset in @(12,16,20,24)) {
@@ -300,8 +301,22 @@ function Restore-UiDataOwnedFields {
         }
         Write-U32 $newBytes $currentApdb.DataSizeField ([uint32]($currentApdb.DataSize + $mapLength))
     }
+    if ($InspectOnly) {
+        # Planning still performs the complete structural validation and builds
+        # the exact result.  Retain it so the write phase does not parse every
+        # current/backup archive a second time after all targets are validated.
+        return [pscustomobject]@{
+            Status = "WouldRestore"
+            Path = $Path
+            PreparedBytes = $newBytes
+        }
+    }
     [IO.File]::WriteAllBytes($Path, $newBytes)
-    return [pscustomobject]@{ Status = "Restored"; Path = $Path }
+    return [pscustomobject]@{
+        Status = "Restored"
+        Path = $Path
+        PreparedBytes = $null
+    }
 }
 
 function Get-MajestyBuildProfile {
@@ -661,7 +676,10 @@ foreach ($record in $backupRecords) {
     } elseif ($DryRun) {
         Write-Host "$($record.Name): would restore"
     } else {
-        Restore-UiDataOwnedFields $target $record.SourcePath | Out-Null
+        if ($null -eq $plan.PreparedBytes -or $plan.PreparedBytes.Length -eq 0) {
+            throw "Prepared restore data is missing for $($record.Name). Refusing to modify it."
+        }
+        [IO.File]::WriteAllBytes($target, [byte[]]$plan.PreparedBytes)
         Write-Host "$($record.Name): restored"
     }
 }
