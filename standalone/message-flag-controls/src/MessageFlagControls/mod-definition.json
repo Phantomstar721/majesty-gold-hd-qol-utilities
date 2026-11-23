@@ -1,0 +1,12 @@
+{
+  "schema_version": 3,
+  "mod_id": "{51f3f0db-81ab-42b4-9ace-aba863de9917}",
+  "internal_name": "MessageFlagControls",
+  "display_name": "Message Flag Controls",
+  "custom_buildings": [],
+  "runtime_features": [
+    {
+      "type": "stock.message-flag-controls.v1"
+    }
+  ]
+}

@@ -112,8 +112,10 @@ and executable build differences.
 The [Speedrun Timer](standalone/speedrun-timer/README.md) runs from its own
 launcher. [Remove Earthquake Screenshake](standalone/remove-earthquake-screenshake/README.md)
 is a Standard mod available [on Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3792151950).
-Both are maintained under `standalone/`. The Workshop installer may lag the
-source in this repository.
+[Message Flag Controls](standalone/message-flag-controls/README.md) adds an
+in-game toggle and clear button through Mod Manager. These three projects are
+maintained under `standalone/`. The Workshop installer may lag the source in
+this repository.
 
 Python 3.9 or newer is required only for source development:
 

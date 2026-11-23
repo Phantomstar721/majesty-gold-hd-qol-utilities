@@ -1,0 +1,15 @@
+<Majesty>
+  <Mod id="{51f3f0db-81ab-42b4-9ace-aba863de9917}">
+    <Name>MessageFlagControls</Name>
+    <DisplayName lang="en_US">Message Flag Controls</DisplayName>
+    <Description lang="en_US">
+      <Short>Toggle message-flag suppression or clear current messages from the in-game HUD.</Short>
+      <Long>Adds two in-quest controls: turn message-flag suppression on or off, and clear existing message flags without changing the setting. The suppression preference is remembered between game sessions. Reward flags are unaffected. Requires Majesty Mod Manager native runtime support and launch through the Manager.</Long>
+    </Description>
+    <DataConfiguration>
+      <Dataset base="Any">
+        <Load />
+      </Dataset>
+    </DataConfiguration>
+  </Mod>
+</Majesty>
