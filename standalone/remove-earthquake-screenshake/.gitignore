@@ -1,0 +1,6 @@
+dist/
+*.log
+workshop/*.mswproj
+workshop/promo-master.png
+workshop/workshop-preview.jpg
+

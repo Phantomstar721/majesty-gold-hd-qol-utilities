@@ -3,19 +3,17 @@
     Builds the distributable Workshop/release zip.
 
 .DESCRIPTION
-    Verifies that the embedded utilities match their source repositories,
-    builds the self-contained graphical installer, and packages only the EXE,
-    public README, and license.
+    Builds the self-contained installer from the utilities in this repository
+    and packages the EXE, public README, and license.
 
 .PARAMETER OutputPath
     Where to write the archive. Defaults to dist\majesty-qol-utilities.zip.
 
 .PARAMETER SourceRoot
-    Passed through to Sync-Utilities.ps1 -Check.
+    Optional path to a complete set of legacy checkouts for source comparison.
 
 .PARAMETER SkipSyncCheck
-    Build without verifying against the source repositories. Only for building
-    from a clone that does not have the utility repos beside it.
+    Skip the legacy source comparison, including when SourceRoot is supplied.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\scripts\Build-Bundle.ps1
@@ -42,19 +40,10 @@ Write-Host "Bundle: $BundleRoot"
 Write-Host "Output: $OutputPath"
 Write-Host ""
 
-if ($SkipSyncCheck) {
-    Write-Host "Sync check skipped by request."
-    Write-Host ""
-} else {
-    Write-Host "Verifying the bundle matches its source repositories..."
-    $checkArgs = @{ Check = $true }
-    if ($SourceRoot) { $checkArgs["SourceRoot"] = $SourceRoot }
-    & (Join-Path $PSScriptRoot "Sync-Utilities.ps1") @checkArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw ("The bundle is out of sync with its source repositories. " +
-            "Run scripts\Sync-Utilities.ps1 and commit the result, " +
-            "or pass -SkipSyncCheck if you know the copies are correct.")
-    }
+if ($SourceRoot -and -not $SkipSyncCheck) {
+    Write-Host "Comparing against the supplied legacy checkouts..."
+    & (Join-Path $PSScriptRoot "Sync-Utilities.ps1") -SourceRoot $SourceRoot -Check
+    if ($LASTEXITCODE -ne 0) { throw "The utilities differ from the supplied legacy checkouts." }
     Write-Host ""
 }
 

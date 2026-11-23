@@ -1,0 +1,14 @@
+[h1]Remove Earthquake Screenshake[/h1]
+
+Earthquake no longer shakes the main map or knocks your Tracking Windows off their targets.
+
+This tiny quality-of-life mod removes only Earthquake's stock camera-shake call. Damage, particles, sound, duration, and targeting remain unchanged.
+
+[list]
+[*]Stops the main-view earthquake shake
+[*]Keeps Tracking Window targets locked in place
+[*]Works through the normal Majesty Gold HD launcher and Mods selector
+[*]Includes registered GPL source for script-merging tools
+[/list]
+
+[b]Compatibility:[/b] Another mod that replaces [i]Earthquake_Unit_Created[/i] must be merged with this one rather than stacked by load order.

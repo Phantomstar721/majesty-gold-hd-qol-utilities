@@ -1,45 +1,32 @@
 <#
 .SYNOPSIS
-    Vendors each utility into this bundle from its own source repository.
+    Compares or imports utilities from a complete set of legacy checkouts.
 
 .DESCRIPTION
-    Every utility here is also published standalone from its own repo. That repo
-    is the source of truth; this bundle carries a copy so it can be downloaded
-    and run as one piece.
-
-    Copies drift. Before this script existed the copies were kept in step by
-    hand, and they did not stay in step: five README files here still described
-    the old Steam discovery behaviour and were missing the warning that the
-    _*_originals folders are not stock backups.
-
-    Run -Check before packaging or committing. It changes nothing and exits 1 if
-    anything has drifted, so it can gate a release.
+    Normal development and packaging use the utilities in this repository.
+    Use -Check to compare a separately supplied legacy source tree without
+    writing files.
 
 .PARAMETER SourceRoot
-    Folder holding the utility repositories. Defaults to this repository's
-    parent, which is the normal side-by-side workspace layout.
+    Folder holding all the legacy standalone utility checkouts.
 
 .PARAMETER Check
     Report drift and exit 1 without writing anything.
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File .\scripts\Sync-Utilities.ps1 -Check
+    powershell -ExecutionPolicy Bypass -File .\scripts\Sync-Utilities.ps1 -SourceRoot C:\legacy-checkouts -Check
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File .\scripts\Sync-Utilities.ps1
+    powershell -ExecutionPolicy Bypass -File .\scripts\Sync-Utilities.ps1 -SourceRoot C:\legacy-checkouts
 #>
 param(
-    [string]$SourceRoot = "",
+    [Parameter(Mandatory = $true)][string]$SourceRoot,
     [switch]$Check
 )
 
 $ErrorActionPreference = "Stop"
 
 $BundleRoot = Split-Path -Parent $PSScriptRoot
-
-if (-not $SourceRoot) {
-    $SourceRoot = Split-Path -Parent $BundleRoot
-}
 
 # Bundle utility folder -> source repository name. The folder name here is what
 # users see, so it does not always match the repository name.
@@ -109,7 +96,7 @@ foreach ($repo in $UtilityRepos.Values) {
 if ($missingRepos.Count -gt 0) {
     throw ("Could not find these source repositories under ${SourceRoot}:`n  " +
         ($missingRepos -join "`n  ") +
-        "`nClone them beside this repository, or pass -SourceRoot.")
+        "`nSupply a folder with the complete set of legacy checkouts.")
 }
 
 $updated = @()

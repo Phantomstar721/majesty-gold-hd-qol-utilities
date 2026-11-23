@@ -1,0 +1,20 @@
+<Majesty>
+	<Mod id="{2455ea5d-b946-4c99-b5d1-eab697d51555}">
+		<Name>RemoveEarthquakeScreenshake</Name>
+		<DisplayName lang="en_US">Remove Earthquake Screenshake</DisplayName>
+		<Description lang="en_US">
+			<Short>Stops Earthquake camera shake and preserves Tracking Window targets.</Short>
+			<Long>Removes only Earthquake's native camera-shake call. Damage, particles, sound, duration, and targeting remain unchanged.</Long>
+		</Description>
+		<DataConfiguration>
+			<Dataset base="Any">
+				<Load>
+					<GPL>
+						<Target>Data\RemoveEarthquakeScreenshake.bcd</Target>
+						<Source>RemoveEarthquakeScreenshake.gpl</Source>
+					</GPL>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Mod>
+</Majesty>

@@ -4,6 +4,10 @@ A single Windows app for installing the Majesty Gold HD quality-of-life utilitie
 Each improvement can be installed or removed on its own, or you can use **Install
 All** and **Uninstall All**.
 
+This is the source repository for the individual Majesty QoL utilities and the
+bundled installer. Each utility's folder contains its patch scripts, launchers,
+and documentation.
+
 The app supports both Steam game builds:
 
 - **Default Public Version** (`1.5.2.24`)
@@ -12,7 +16,7 @@ The app supports both Steam game builds:
 ## Use it
 
 1. Close Majesty Gold HD.
-2. Download `Majesty QoL Utilities.exe` from this Workshop item/release.
+2. Subscribe to [Majesty QoL Utilities on Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3778947832) and open its download folder.
 3. Double-click the EXE and approve the Windows administrator prompt.
 4. Check the detected `MajestyHD.exe`, then choose the utilities you want.
 5. Launch Majesty normally through Steam.
@@ -44,19 +48,19 @@ Run anyway** only if you downloaded it from the official Workshop item/release.
 
 ## Included utilities
 
-- **Skip Intro Videos** — starts at the main menu instead of playing the intro.
-- **Downloadable Quests Shortcut** — makes the compass icon a fixed shortcut to
+- [**Skip Intro Videos**](utilities/Skip%20Intro%20Videos/) starts at the main menu instead of playing the intro.
+- [**Downloadable Quests Shortcut**](utilities/Downloadable%20Quests%20Shortcut/) makes the compass icon a fixed shortcut to
   downloadable and custom quests.
-- **Quest Map Drag** — adds left-click drag panning to the quest map.
-- **Unlock All Quests** — makes every stock quest selectable for the session.
-- **Suppress All Message Flags** — hides scripted message banners, their sound,
+- [**Quest Map Drag**](utilities/Quest%20Map%20Drag/) adds left-click drag panning to the quest map.
+- [**Unlock All Quests**](utilities/Unlock%20All%20Quests/) makes every stock quest selectable for the session.
+- [**Suppress All Message Flags**](utilities/Suppress%20All%20Message%20Flags/) hides scripted message banners, their sound,
   and forced mini-camera focus.
-- **Remember Active Mods** — restores your active-mod list on later launches.
-- **Remember Game Speed** — saves and restores the in-quest speed setting.
-- **Remember Camera Zoom** — saves and restores the camera zoom setting.
-- **Generic Visitor Lists** — lets building visitor lists render nonhero units
+- [**Remember Active Mods**](utilities/Remember%20Active%20Mods/) restores your active-mod list on later launches.
+- [**Remember Game Speed**](utilities/Remember%20Game%20Speed/) saves and restores the in-quest speed setting.
+- [**Remember Camera Zoom**](utilities/Remember%20Camera%20Zoom/) saves and restores the camera zoom setting.
+- [**Generic Visitor Lists**](utilities/Generic%20Visitor%20Lists/) lets building visitor lists render nonhero units
   with stock monster icons, live name/action/HP data, and a Threat Rank.
-- **Lower Tracking Window** — changes the lower window's Autoscan control into
+- [**Lower Tracking Window**](utilities/Lower%20Tracking%20Window/) changes the lower window's Autoscan control into
   a stock-style Track Selected button while leaving every dialog Track button
   connected to the upper window.
 
@@ -100,6 +104,16 @@ EXE patches need to be reinstalled afterward. It does not remove Workshop
 subscriptions or normal save files.
 
 ## Run or build from source
+
+Maintain the included patchers under `utilities/`. The bundle builds from this
+checkout. [Patch reference notes](docs/patch-reference/) document stock behavior
+and executable build differences.
+
+The [Speedrun Timer](standalone/speedrun-timer/README.md) runs from its own
+launcher. [Remove Earthquake Screenshake](standalone/remove-earthquake-screenshake/README.md)
+is a Standard mod available [on Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3792151950).
+Both are maintained under `standalone/`. The Workshop installer may lag the
+source in this repository.
 
 Python 3.9 or newer is required only for source development:
 

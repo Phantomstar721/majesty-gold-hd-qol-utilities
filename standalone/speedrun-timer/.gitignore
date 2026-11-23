@@ -1,0 +1,6 @@
+docs/internal/
+local-test-game/
+tools/__pycache__/
+scripts/__pycache__/
+*.bin
+*.log

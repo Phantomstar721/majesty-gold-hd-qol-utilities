@@ -1,0 +1,28 @@
+///////////////////////////////////////////////////////////////////////////////
+// Stock source: GPLMx/TaskModules/Subtasks/mx_Spells.gpl
+// Stock change: omit only $StartEarthquakeSpell so Earthquake does not shake
+// cameras or clear Tracking Window targets.
+///////////////////////////////////////////////////////////////////////////////
+function Earthquake_Unit_Created ( agent thisagent, agent target )
+/////////////////////////////////////////////////////////////
+// player cast spell - from Sorcerer's Abode
+// - birthscript for Earthquake unit
+/////////////////////////////////////////////////////////////
+// Sets the earthquake active script to call at set intervals
+// over the duration of the spell.
+/////////////////////////////////////////////////////////////
+declare
+
+begin
+	//$DebugOut (911, "EARTHQUAKE CREATED!");
+
+	// run a test to see what gets hit every second
+	$NewThread ( thisagent's "activeScript", 1500, thisagent );
+
+	// have the spell last for X seconds
+	$SetSpellUnitTimeout ( thisagent, 6000 );
+
+	// run the damage code once, so in case of lag there is never no damage
+	$earthquake_active ( thisagent );
+end
+

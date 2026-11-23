@@ -1,0 +1,3 @@
+Added the matching GPL source and registered it in the mod manifest so script-merging tools can preserve the Earthquake screenshake fix when combining mods.
+
+Gameplay is unchanged. Still works independently through the normal Majesty mod selector.
