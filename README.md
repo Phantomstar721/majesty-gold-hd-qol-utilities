@@ -129,8 +129,12 @@ The build produces the standalone `Majesty QoL Utilities.exe`; players do not
 need Python or PowerShell modules. The app embeds and runs each utility's
 existing version-checked PowerShell patcher.
 
-Maintainers can stage the current build for RGSEditor after building:
+Maintainers can stage a release candidate for RGSEditor while keeping the
+checked-in executable at its published version:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\Stage-Workshop.ps1
+pwsh -File .\scripts\Build-Exe.ps1 -OutputDir dist\workshop-build
+pwsh -File .\scripts\Stage-Workshop.ps1 -ExecutablePath 'dist\workshop-build\Majesty QoL Utilities.exe'
 ```
+
+Open `dist/workshop-upload/MajestyQoLUtilities.mswproj` in RGSEditor.

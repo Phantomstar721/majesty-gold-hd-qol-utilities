@@ -10,8 +10,8 @@ Subscribe, open the Workshop item folder, close Majesty, and run Majesty QoL Uti
 The download contains no Majesty game assets. Changes are applied only to your local game installation or preferences when you run the app.
 
 Full patch details, source code, and individual utility documentation are linked from the app.</Description>
-		<ContentPath>C:\Program Files (x86)\Steam\steamapps\common\Majesty HD\SDK\Mods\MajestyQoLUtilitiesUpload\content</ContentPath>
-		<PreviewImagePath>C:\Program Files (x86)\Steam\steamapps\common\Majesty HD\SDK\Mods\MajestyQoLUtilitiesUpload\workshop-preview.jpg</PreviewImagePath>
+		<ContentPath>C:\Users\bterr\source\repos\tools\majesty-gold-hd-qol-utilities\dist\workshop-upload\content</ContentPath>
+		<PreviewImagePath>C:\Users\bterr\source\repos\tools\majesty-gold-hd-qol-utilities\workshop\workshop-preview.jpg</PreviewImagePath>
 		<IDTag>Original Rules</IDTag>
 		<IDTag>Northern Expansion Rules</IDTag>
 	</SteamWorkshop>
